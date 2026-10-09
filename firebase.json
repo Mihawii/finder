@@ -1,0 +1,31 @@
+{
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "node-functions",
+      "runtime": "nodejs20",
+      "predeploy": [
+        "cp IMMIGRATION_DATA.md IMMIGRATION_DATA_UPDATES.md functions/"
+      ]
+    },
+    {
+      "source": "pdf-function",
+      "codebase": "pdf-functions",
+      "runtime": "python312"
+    }
+  ],
+  "hosting": {
+    "public": "dist",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      {
+        "source": "/api/analyzeProfile",
+        "function": "analyzeProfile"
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}

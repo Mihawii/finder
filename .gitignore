@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+functions/.env
+.DS_Store
+.firebase/
+pdf-function/venv/
+__pycache__/
+*.pyc
