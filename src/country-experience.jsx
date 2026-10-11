@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { gsap } from "gsap";
 import { CustomEase } from "gsap/CustomEase";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { onboardingSlides } from "@/lib/onboarding-slides";
 import "./country-experience.css";
+
+const OnboardingDialog = lazy(() => import("@/components/ui/onboarding-dialog").then((module) => ({ default: module.OnboardingDialog })));
 
 gsap.registerPlugin(CustomEase, ScrollTrigger);
 CustomEase.create("country-energy", "M0,0 C0.32,0.72 0,1 1,1");
@@ -17,7 +20,7 @@ const FLAG_STAR = Array.from({ length: 10 }, (_, i) => {
 }).join(" ");
 const DESTINATIONS = {
   us: {
-    name: "United States", short: "USA", greeting: "Hello,", headline: "America.", number: "01",
+    name: "United States", short: "USA", greeting: "Hello,", headline: "America.",
     image: "/images/united-states.jpg", imageAlt: "The Statue of Liberty beneath an open New York sky",
     location: "Liberty Island, New York", coordinates: "40°41′ N  74°02′ W",
     cta: "Find my U.S. visa", intent: "I’m planning to…", promise: "A little clarity. A world of possibility.",
@@ -30,7 +33,7 @@ const DESTINATIONS = {
     ],
   },
   ca: {
-    name: "Canada", short: "CAN", greeting: "Bonjour,", headline: "Canada.", number: "02",
+    name: "Canada", short: "CAN", greeting: "Bonjour,", headline: "Canada.",
     image: "/images/canada.jpg", imageAlt: "Toronto’s skyline and the CN Tower overlooking Lake Ontario",
     location: "Toronto, Ontario", coordinates: "43°39′ N  79°23′ W",
     cta: "Find my Canadian pathway", intent: "Your path to Canada", promise: "Your story. Your possibilities.",
@@ -158,6 +161,7 @@ export default function CountryExperience({ onStartCanada }) {
   const [arriving, setArriving] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [explorer, setExplorer] = useState(null);
+  const [onboardingIntent, setOnboardingIntent] = useState(null);
   const root = useRef(null);
   const main = useRef(null);
   const menu = useRef(null);
@@ -272,6 +276,7 @@ export default function CountryExperience({ onStartCanada }) {
     if (next === country || arriving) return;
     setMenuOpen(false);
     setExplorer(null);
+    setOnboardingIntent(null);
     setCountry(next);
     setArriving(true);
     const url = new URL(window.location.href);
@@ -280,6 +285,11 @@ export default function CountryExperience({ onStartCanada }) {
     window.scrollTo({ top: 0, behavior: "instant" });
   };
   const start = (intent = "visit") => {
+    setOnboardingIntent(intent);
+  };
+  const finishOnboarding = () => {
+    const intent = onboardingIntent;
+    setOnboardingIntent(null);
     if (country === "ca") onStartCanada();
     else setExplorer(intent);
   };
@@ -314,7 +324,7 @@ export default function CountryExperience({ onStartCanada }) {
           <h1 className="hero-reveal" id="country-title">{destination.greeting} <em>{destination.headline}</em></h1>
           <div className="hero-reveal hero-actions"><button className="country-button" onClick={() => start()}>{destination.cta}<span className="button-arrow"><Arrow /></span></button><button className="hero-secondary" onClick={() => scrollTo("country-process")}>How it works <span>↘</span></button></div>
         </div>
-        <div className="hero-bottom hero-reveal"><div className="hero-location"><span className="location-cross">＋</span><div><span>{destination.location}</span><small>{destination.coordinates}</small></div></div><button className="hero-scroll" onClick={() => scrollTo("country-pathways")}>SCROLL TO EXPLORE <span>↓</span></button><div className="hero-edition"><CountryMark country={country}/><span>{destination.short}</span><span className="edition-count">{destination.number} <i>/ 02</i></span></div></div>
+        <div className="hero-bottom hero-reveal"><div className="hero-location"><span className="location-cross">＋</span><div><span>{destination.location}</span><small>{destination.coordinates}</small></div></div><div className="hero-edition"><CountryMark country={country}/><span>{destination.short}</span></div></div>
       </section>
 
       <section id="country-pathways" className="pathways-section section-shell">
@@ -359,6 +369,7 @@ export default function CountryExperience({ onStartCanada }) {
       <footer className="country-footer section-shell"><div className="footer-top"><Brand/><span>Great journeys start with a little direction.</span><button onClick={() => scrollTo("country-home")} aria-label="Back to top">↑</button></div><div className="footer-bottom"><span>© {new Date().getFullYear()} PathwayFinder</span><span>Independent guidance. Not legal or immigration advice.</span><span>DESIGNED FOR YOUR NEXT CHAPTER ↗</span></div></footer>
     </main>
     {arriving && <Arrival key={country} country={country} reduced={reduced} sceneRef={main} onComplete={finishArrival} />}
+    {onboardingIntent !== null && <Suspense fallback={<span className="sr-only" role="status">Opening your introduction…</span>}><OnboardingDialog slides={onboardingSlides[country]} label={country === "ca" ? "YOUR CANADIAN CHAPTER" : "YOUR AMERICAN CHAPTER"} onComplete={finishOnboarding} onSkip={finishOnboarding} onDismiss={() => setOnboardingIntent(null)} showRestart={false} /></Suspense>}
     {explorer && <VisaExplorer initialIntent={explorer} onClose={() => setExplorer(null)}/>}
   </div>;
 }

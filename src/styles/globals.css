@@ -1,0 +1,64 @@
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+/* Keep the existing landing page and assessment's reset intact. */
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--foreground);
+  --color-popover: var(--card);
+  --color-popover-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --background: #121212;
+  --foreground: #eeede8;
+  --card: #191919;
+  --primary: #eeede8;
+  --primary-foreground: #171717;
+  --secondary: #242424;
+  --muted: #242424;
+  --muted-foreground: #aaa7a1;
+  --accent: #292929;
+  --destructive: #ee9696;
+  --border: #ffffff26;
+  --ring: #c1d5f5;
+  --radius: 0.75rem;
+}
+
+/* Scope the reset to the new component while legacy screens migrate to Tailwind. */
+@layer base {
+  .onboarding-dialog,
+  .onboarding-dialog *,
+  .onboarding-dialog *::before,
+  .onboarding-dialog *::after {
+    box-sizing: border-box;
+    border: 0 solid var(--border);
+  }
+
+  .onboarding-dialog :is(h2, p) { margin: 0; }
+  .onboarding-dialog img { display: block; max-width: 100%; }
+  .onboarding-dialog button { background-color: transparent; }
+}
+
+.onboarding-dialog { overscroll-behavior: contain; }
+.onboarding-dialog button { font: 500 14px/1.4 'DM Sans', sans-serif; }
+.onboarding-heading { font-family: 'Instrument Serif', Georgia, serif; }

@@ -8,6 +8,19 @@ Source: https://images.unsplash.com/photo-1517935706615-2717063c2225
 
 Photographs distributed by Unsplash: https://unsplash.com/license
 
+Onboarding photography
+
+Planning — fountain pen on lined paper
+Source: https://images.unsplash.com/photo-1455390582262-044cdead277a
+
+Perspective — mountain summit
+Source: https://images.unsplash.com/photo-1464822759023-fed622ff2c3b
+
+Next steps — mountain lake
+Source: https://images.unsplash.com/photo-1470770841072-f978cf4d019e
+
+Onboarding also reuses the United States and Canada photographs credited above.
+
 Canadian maple-leaf vector
 Adapted from flag-icons: https://github.com/lipis/flag-icons/blob/main/flags/1x1/ca.svg
 

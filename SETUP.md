@@ -3,7 +3,7 @@
 ## Running the App Locally
 
 ### Prerequisites
-- [Node.js](https://nodejs.org) v18 or higher
+- [Node.js](https://nodejs.org) v20 or higher
 - npm (comes with Node.js)
 
 ### Steps
@@ -24,6 +24,62 @@ http://localhost:3000
 ```
 
 The app hot-reloads automatically — any changes you save to the JSX file will appear instantly in the browser.
+
+## UI Components, Tailwind, and TypeScript
+
+The app supports TypeScript alongside the existing JSX screens. Run `npm run typecheck`
+to check the TypeScript components and `npm run build` for the production build.
+
+- Shared UI components: `/components/ui` (import as `@/components/ui/...`).
+- Shared utilities and onboarding content: `/lib` (import as `@/lib/...`).
+- Tailwind styles and shadcn theme tokens: `/src/styles/globals.css`.
+- Existing landing-page styles: `/src/country-experience.css`.
+
+`components/ui` is the shared destination for reusable UI and shadcn CLI additions.
+Keeping it separate from the existing feature screens in `src` makes imports predictable
+and keeps generated components in one place. `components.json`, `tsconfig.json`, and
+`vite.config.js` all agree on the root `@/` alias.
+
+Tailwind uses its Vite plugin. Its global Preflight reset is omitted to preserve the
+existing landing page and assessment styles; the onboarding dialog has a scoped reset.
+See the [Tailwind Vite setup](https://tailwindcss.com/docs/installation/using-vite)
+and [Preflight documentation](https://tailwindcss.com/docs/preflight).
+
+The configuration is already installed in this repository. For a fresh Vite React
+project, choose the React TypeScript template, then initialize shadcn:
+
+```bash
+npm create vite@latest my-app -- --template react-ts
+cd my-app
+npm install
+npm install -D tailwindcss @tailwindcss/vite
+npx shadcn@latest init
+npm install motion embla-carousel-react lucide-react clsx tailwind-merge
+```
+
+Configure the Tailwind Vite plugin and the `@/` alias as shown in this repository.
+See [shadcn's manual setup](https://ui.shadcn.com/docs/installation/manual) for
+the CSS tokens and component aliases. To add another UI component to this configured
+project, use `npx shadcn@latest add <component>`.
+
+### Onboarding dialog
+
+`components/ui/onboarding-dialog.tsx` adapts the supplied Embla/Motion carousel.
+`components/ui/demo.tsx` is the standalone usage example, including restart behavior.
+The production integration opens from the destination CTA or a pathway button in
+`src/country-experience.jsx`. It uses the destination-specific slides in
+`lib/onboarding-slides.ts` and retains the selected U.S. travel intent.
+
+The component accepts `defaultOpen`, `slides`, `label`, `onComplete`, `onSkip`,
+`onDismiss`, and `showRestart`. Each slide has `id`, `title`, `description`, `image`,
+and `alt`. State is local; no context provider, account, or persistent storage is
+needed. The introduction can be reopened from the same CTA, starting at the first slide.
+
+Next, Back, dots, swiping, and Left/Right arrow keys navigate the slides. Skip and
+Get Started continue to the Canadian consent dialog or the U.S. visa explorer.
+The close button and Escape return to the landing page. The native modal dialog
+traps focus, restores focus on close, and locks background scrolling. It fits mobile
+screens, scrolls on short viewports, and respects reduced-motion preferences.
 
 ---
 
