@@ -91,6 +91,24 @@ The close button and Escape return to the landing page. The native modal dialog
 traps focus, restores focus on close, and locks background scrolling. It fits mobile
 screens, scrolls on short viewports, and respects reduced-motion preferences.
 
+### Assessment
+
+The assessment adapts [21st.dev's Multi-step Wizard](https://21st.dev/@dhileepkumargm/components/multi-step-wizard)
+(MCP demo 7821): grouped fields, per-section validation, completion states, and
+directional transitions. It uses the existing `motion/react` dependency.
+
+- `src/assessment_flow.jsx`: six conditional sections, editable review, loading/error screens.
+- `src/assessment-data.js`: existing answer options, profile shape, and dependent-answer resets.
+- `components/ui/assessment-controls.tsx`: keyboard-accessible country combobox, native selects,
+  radio choices, and section navigation.
+- `src/styles/assessment.css`: scoped responsive layout and form styles.
+- `components/ui/brand.tsx` and `button.tsx`: shared branding and action controls.
+
+The profile remains in React state. Returning from a report or a failed request
+restores the review and its answers; starting a new assessment clears them. The
+existing profile mapper, CRS calculation, and report payload format are retained.
+The photo becomes a compact banner on mobile, and animation respects reduced motion.
+
 ---
 
 ## Pushing Changes to GitHub

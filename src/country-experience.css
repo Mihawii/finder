@@ -137,8 +137,6 @@ body[data-menu-status='open'] .country-header { position: fixed; }
 .skip-link { position: fixed; top: 10px; left: 10px; z-index: 200; padding: 12px 16px; background: #eeede8; color: #111 !important; transform: translateY(-150%); }
 .skip-link:focus { transform: translateY(0); }
 .dark-assessment { min-height: 100vh; background: #090909; color: #eeede8; }
-.assessment-notice { background: #101010; border-bottom: 1px solid #ffffff18; padding: 14px 28px; text-align: center; font: 11px/1.7 'DM Sans', sans-serif; color: #aaa9a4; }
-.assessment-notice strong { color: #d3d0c8; font-weight: 500; }
 .assessment-disclaimer { background: #121212; color: #eeede8; border: 1px solid #ffffff25; border-radius: 20px; width: min(520px, calc(100% - 32px)); max-height: calc(100svh - 40px); overflow: auto; padding: 34px; }
 .assessment-disclaimer::backdrop { background: #000b; backdrop-filter: blur(8px); }
 .assessment-disclaimer h2 { font: 45px 'Instrument Serif', Georgia, serif; font-weight: 400; margin: 18px 0; }

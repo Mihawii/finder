@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import DEV_CONFIG from "./dev.config.js";
-import AssessmentFlow from "./src/assessment_flow.jsx";
+import AssessmentFlow, { AssessmentReportPending, AssessmentReportError } from "./src/assessment_flow.jsx";
 import CountryExperience from "./src/country-experience.jsx";
 
 function useWindowWidth() {
@@ -16,10 +16,6 @@ function useWindowWidth() {
 // ============================================================
 // SHARED: DISCLAIMER COMPONENTS
 // ============================================================
-
-function DisclaimerBanner() {
-  return <div className="assessment-notice"><strong>Independent Canadian immigration guidance.</strong> Not affiliated with IRCC or any government agency. General information only; consult a licensed professional for advice.</div>;
-}
 
 function DisclaimerModal({ onAccept, onDecline }) {
   const dialog = useRef(null);
@@ -493,38 +489,6 @@ function WhatIfSimulator({ profile, breakdown, mounted }) {
 // RESULTS PAGE
 // ============================================================
 
-// i18n: Russian translations to be added later — render from this array, do not hardcode facts in JSX.
-const CANADA_FACTS = [
-  "St. Paul, Alberta has the world's first official UFO landing pad — built in 1967, a real Guinness World Record.",
-  "Glendon, Alberta is home to the world's largest perogy, speared on a four-storey fork.",
-  "Canada has more lakes than any other country on Earth — around 62% of all the world's lakes.",
-  "Canada holds roughly a fifth of the entire planet's fresh water.",
-  "Quebec produces about 70% of the world's maple syrup.",
-  "Canada has the longest coastline of any country — over 240,000 km.",
-  "Vegreville, Alberta has the world's largest pysanka — a giant aluminium Ukrainian Easter egg.",
-  "Hawaiian pizza was invented in Canada, not Hawaii (Ontario, 1962).",
-  "Ottawa's Rideau Canal becomes the world's longest skating rink each winter — nearly 8 km of ice.",
-  "Churchill, Manitoba is the \"Polar Bear Capital of the World.\"",
-  "Canada is the second-largest country in the world by land area.",
-  "The narwhal, the real-life \"unicorn of the sea,\" lives in Canada's Arctic waters.",
-  "Sudbury, Ontario has a giant nickel — a 9-metre-wide coin you can stand beside.",
-  "Canada has two official languages, English and French.",
-  "The Trans-Canada Highway runs about 8,000 km, coast to coast.",
-  "Banff, Alberta was Canada's first national park, established in 1885.",
-  "Drumheller, Alberta has the world's largest dinosaur — an 86-foot T. rex you can climb inside.",
-  "The Calgary Stampede is one of the biggest outdoor rodeos on Earth.",
-  "Vancouver is nicknamed \"Hollywood North\" — a major North American film and TV hub.",
-  "Manitoba is one of the best places in the world to see beluga whales each summer.",
-  "New Brunswick is Canada's only officially bilingual province.",
-  "Cape Spear, Newfoundland is the easternmost point in all of North America.",
-  "Newfoundland joined Canada in 1949 — the last province to join Confederation.",
-  "The Bluenose, the schooner on the Canadian dime, comes from Nova Scotia.",
-  "Toronto's CN Tower was the world's tallest free-standing structure for over 30 years.",
-  "Prince Edward Island is Canada's smallest province — you can drive across it in about 3 hours.",
-  "Quebec City, founded in 1608, is one of the oldest cities in North America.",
-  "Saskatchewan is nicknamed the \"Land of Living Skies\" for its dramatic sunsets.",
-];
-
 function ResultsPage({
   report,
   breakdown,
@@ -542,8 +506,6 @@ function ResultsPage({
     projected: true, pathways: true, sim: true, compare: true,
     plan: true, costs: true, timeline: true, share: true
   });
-  const [factIndex, setFactIndex] = useState(() => Math.floor(Math.random() * CANADA_FACTS.length));
-  const [factOpacity, setFactOpacity] = useState(1);
   const [reportReady, setReportReady] = useState(false);
   const [simulatorState, setSimulatorState] = useState({
     improveIelts: false,
@@ -561,6 +523,7 @@ function ResultsPage({
   const [aiState, setAiState] = useState("idle"); // "idle" | "loading" | "done" | "error"
   const [aiReport, setAiReport] = useState(null); // stores AI result locally after promo unlock
   const reportContentRef = useRef(null);
+  const reportRequestStarted = useRef(false);
 
   const sectionRefs = useRef([]);
 
@@ -573,23 +536,11 @@ function ResultsPage({
     }
   }, [aiState]);
 
-  // Rotate the "Did you know?" Canada fact every 9s with a gentle fade while loading.
-  useEffect(() => {
-    if (aiState !== "loading") return;
-    let fadeTimer;
-    const rotate = setInterval(() => {
-      setFactOpacity(0);
-      fadeTimer = setTimeout(() => {
-        setFactIndex((prev) => (prev + 1) % CANADA_FACTS.length);
-        setFactOpacity(1);
-      }, 500);
-    }, 9000);
-    return () => { clearInterval(rotate); clearTimeout(fadeTimer); };
-  }, [aiState]);
-
   // TEMP: promo gate bypassed for beta testing — auto-trigger AI call on mount
   useEffect(() => {
-    if (unlocked && aiState === "idle" && !aiReport) {
+    if (unlocked && aiState === "idle" && !aiReport && !reportRequestStarted.current) {
+      // StrictMode replays mount effects in development; generate once per report.
+      reportRequestStarted.current = true;
       setAiState("loading");
       (async () => {
         try {
@@ -1555,23 +1506,6 @@ function ResultsPage({
       whiteSpace: "pre-wrap",
       wordBreak: "break-word",
     },
-    loadingWrap: {
-      minHeight: "100vh",
-      background: "#090909",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      padding: "24px",
-    },
-    loadingCard: {
-      width: "100%",
-      maxWidth: "760px",
-      background: "#151515",
-      border: "1px solid rgba(220,210,200,0.12)",
-      borderRadius: "28px",
-      boxShadow: "0 24px 50px rgba(20,33,27,0.08)",
-      padding: "32px",
-    },
     reveal: (key, delay = 0) => ({
       opacity: visibleSections[key] ? 1 : 0,
       transform: visibleSections[key] ? "translateY(0px)" : "translateY(18px)",
@@ -1580,81 +1514,11 @@ function ResultsPage({
   };
 
   if (loading) {
-    return (
-      <div style={styles.loadingWrap}>
-        <style>{`
-          @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
-          * { box-sizing: border-box; }
-          body { margin: 0; }
-          button:focus-visible, a:focus-visible { outline: 2px solid #df969b; outline-offset: 3px; }
-          @keyframes pf-indeterminate {
-            0% { left: -40%; }
-            100% { left: 100%; }
-          }
-          @media (prefers-reduced-motion: reduce) {
-            * { animation: none !important; transition: none !important; }
-          }
-        `}</style>
-        <div style={styles.loadingCard}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 24 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: "#151515", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>🍁</div>
-            <span style={{ fontFamily: "'Manrope', sans-serif", fontWeight: 700, fontSize: 15, color: "#e09a9f", letterSpacing: "-0.02em" }}>PathwayFinder</span>
-          </div>
+    return <AssessmentReportPending onBack={onBack} />;
+  }
 
-          {/* 1. Expectation-setting headline + subline */}
-          <h1 style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontSize: 32, fontWeight: 600, color: "#eeede8", margin: "0 0 8px", lineHeight: 1.2 }}>
-            Building your Pathway Report
-          </h1>
-          <p style={{ fontFamily: "'Manrope', sans-serif", fontSize: 15, color: "#aaa7a1", lineHeight: 1.6, margin: "0 0 28px" }}>
-            This usually takes about 2 minutes while we check your profile against every current Express Entry pathway.
-          </p>
-
-          {/* 2. Indeterminate progress indicator (no fake percentage) */}
-          <div role="progressbar" aria-label="Building your report" style={{ width: "100%", height: 8, borderRadius: 8, background: "rgba(190,95,105,0.1)", overflow: "hidden", position: "relative" }}>
-            <div style={{
-              position: "absolute",
-              top: 0,
-              bottom: 0,
-              left: "-40%",
-              width: "40%",
-              borderRadius: 8,
-              background: "linear-gradient(90deg, #a83f49, #d77b84)",
-              animation: "pf-indeterminate 1.4s ease-in-out infinite",
-            }} />
-          </div>
-
-          {/* 3. Rotating "Did you know?" Canada fact */}
-          <div style={{ marginTop: 28, background: "#151515", border: "1px solid rgba(190,95,105,0.15)", borderRadius: 16, padding: "18px 20px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <span style={{ fontSize: 16 }}>🍁</span>
-              <span style={{ fontFamily: "'Manrope', sans-serif", fontSize: 12, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "#e09a9f" }}>Did you know?</span>
-            </div>
-            <p style={{
-              fontFamily: "'Manrope', sans-serif",
-              fontSize: 15,
-              lineHeight: 1.6,
-              color: "#eeede8",
-              margin: 0,
-              minHeight: 48,
-              opacity: factOpacity,
-              transition: "opacity 450ms ease",
-            }}>
-              {CANADA_FACTS[factIndex]}
-            </p>
-          </div>
-
-          {/* Keep-alive guidance */}
-          <div style={{ marginTop: 24, display: "grid", gap: 12 }}>
-            <div style={{ background: "#242019", border: "1px solid #50452f", padding: "12px 16px", borderRadius: 12, fontWeight: 700, color: "#d9c897", textAlign: "center", fontSize: 14 }}>
-              ⚠️ Please do not close or refresh this page while your report is being generated.
-            </div>
-            <div style={{ fontSize: 13, color: "#aaa7a1", textAlign: "center", lineHeight: 1.6 }}>
-              No data is stored or shared.
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+  if (aiState === "error") {
+    return <AssessmentReportError onBack={onBack} />;
   }
 
   if (!parsedReport && rawFallback) {
@@ -2736,6 +2600,7 @@ function AssessmentPage({ onBack }) {
   const [analysisState, setAnalysisState] = useState("form"); // "form" | "loading" | "results"
   const [report, setReport] = useState("");
   const [mappedProfile, setMappedProfile] = useState(null);
+  const [formProfile, setFormProfile] = useState(null);
   const [breakdown, setBreakdown] = useState({});
 
   // DEV: reset to dev profile on restart
@@ -2743,10 +2608,13 @@ function AssessmentPage({ onBack }) {
     setAnalysisState("form");
     setReport("");
     setMappedProfile(null);
+    setFormProfile(null);
     setBreakdown({});
   };
 
   const handleComplete = (formProfile) => {
+    setFormProfile(formProfile);
+    window.scrollTo(0, 0);
     const mapped = mapProfileForCRS(formProfile);
     const bd = calcCRS(mapped);
     setMappedProfile(mapped);
@@ -2768,12 +2636,7 @@ function AssessmentPage({ onBack }) {
     );
   }
 
-  return (
-    <>
-      <DisclaimerBanner />
-      <AssessmentFlow onComplete={handleComplete} onBack={onBack} />
-    </>
-  );
+  return <AssessmentFlow onComplete={handleComplete} onBack={onBack} initialProfile={formProfile} />;
 }
 
 /* ============================================================
