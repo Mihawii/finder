@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useSta
 import { gsap } from "gsap";
 import { CustomEase } from "gsap/CustomEase";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { CountryFlag } from "@/components/ui/country-flag";
 import { Brand } from "@/components/ui/brand";
 import { onboardingSlides } from "@/lib/onboarding-slides";
 import "./country-experience.css";
@@ -46,14 +47,6 @@ const DESTINATIONS = {
     ],
   },
 };
-
-export function CountryMark({ country, className = "", ...props }) {
-  return country === "ca" ? (
-    <svg className={className} viewBox={MAPLE_VIEWBOX} fill="currentColor" aria-hidden="true" {...props}><path d={MAPLE} /></svg>
-  ) : (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}><path d="m12 1.5 3.2 6.7 7.3 1-5.25 5.15 1.25 7.25L12 18.2l-6.5 3.4 1.25-7.25L1.5 9.2l7.3-1z" /></svg>
-  );
-}
 
 function Arrow({ diagonal = false, ...props }) {
   return <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true" {...props}><path d={diagonal ? "M6 18 18 6M6 6h12v12" : "M4 12h15m-6-6 6 6-6 6"} /></svg>;
@@ -118,7 +111,7 @@ function Arrival({ country, onComplete, reduced, sceneRef }) {
 
 function DestinationSwitch({ country, onChange, disabled = false }) {
   return <div className="destination-switch" role="group" aria-label="Choose your destination">
-    {Object.entries(DESTINATIONS).map(([id, destination]) => <button key={id} type="button" aria-pressed={country === id} onClick={() => onChange(id)} disabled={disabled}><CountryMark country={id} /><span>{destination.name}</span></button>)}
+    {Object.entries(DESTINATIONS).map(([id, destination]) => <button key={id} type="button" aria-pressed={country === id} onClick={() => onChange(id)} disabled={disabled}><CountryFlag country={id} /><span>{destination.name}</span></button>)}
   </div>;
 }
 
@@ -277,11 +270,11 @@ export default function CountryExperience({ onStartCanada }) {
       </button>
     </header>
     <nav ref={menu} id="country-menu" className="country-underlay" aria-label="Main navigation" aria-hidden={!menuOpen} {...(!menuOpen || arriving ? { inert: "" } : {})}>
-      <div className="underlay-top" data-menu-reveal><span className="eyebrow">A WORLD OF POSSIBILITIES</span><CountryMark country={country}/></div>
+      <div className="underlay-top" data-menu-reveal><span className="eyebrow">A WORLD OF POSSIBILITIES</span><CountryFlag country={country}/></div>
       <div className="underlay-links">
         {[['The beginning', 'country-home'], ['Your pathways', 'country-pathways'], ['How it works', 'country-process'], ['Questions', 'country-questions']].map(([label, id], i) => <button key={id} data-menu-reveal onClick={() => scrollTo(id)}><span>0{i + 1}</span>{label}<Arrow diagonal /></button>)}
       </div>
-      <div className="underlay-bottom" data-menu-reveal><span className="eyebrow">CHOOSE YOUR NEXT CHAPTER</span><button onClick={() => changeCountry(country === "us" ? "ca" : "us")}><CountryMark country={country === "us" ? "ca" : "us"}/>{country === "us" ? "Explore Canada" : "Explore the United States"}<Arrow/></button><p>Independent guidance.<br/>Possibilities without borders.</p></div>
+      <div className="underlay-bottom" data-menu-reveal><span className="eyebrow">CHOOSE YOUR NEXT CHAPTER</span><button onClick={() => changeCountry(country === "us" ? "ca" : "us")}><CountryFlag country={country === "us" ? "ca" : "us"}/>{country === "us" ? "Explore Canada" : "Explore the United States"}<Arrow/></button><p>Independent guidance.<br/>Possibilities without borders.</p></div>
     </nav>
     <div ref={overlay} className="underlay-overlay" onClick={() => { setMenuOpen(false); toggle.current.focus(); }} aria-hidden="true" />
     <main ref={main} data-main className="country-main" {...(menuOpen || arriving ? { inert: "" } : {})}>
@@ -293,7 +286,7 @@ export default function CountryExperience({ onStartCanada }) {
           <h1 className="hero-reveal" id="country-title">{destination.greeting} <em>{destination.headline}</em></h1>
           <div className="hero-reveal hero-actions"><button className="country-button" onClick={() => start()}>{destination.cta}<span className="button-arrow"><Arrow /></span></button><button className="hero-secondary" onClick={() => scrollTo("country-process")}>How it works <span>↘</span></button></div>
         </div>
-        <div className="hero-bottom hero-reveal"><div className="hero-location"><span className="location-cross">＋</span><div><span>{destination.location}</span><small>{destination.coordinates}</small></div></div><div className="hero-edition"><CountryMark country={country}/><span>{destination.short}</span></div></div>
+        <div className="hero-bottom hero-reveal"><div className="hero-location"><span className="location-cross">＋</span><div><span>{destination.location}</span><small>{destination.coordinates}</small></div></div><div className="hero-edition"><CountryFlag country={country}/><span>{destination.short}</span></div></div>
       </section>
 
       <section id="country-pathways" className="pathways-section section-shell">
@@ -322,7 +315,7 @@ export default function CountryExperience({ onStartCanada }) {
       <section className="other-destination section-shell" data-scroll-reveal>
         <div className="other-destination-image"><img src={DESTINATIONS[country === "us" ? "ca" : "us"].image} alt={DESTINATIONS[country === "us" ? "ca" : "us"].imageAlt} loading="lazy"/></div>
         <div className="other-destination-content"><span className="eyebrow">ANOTHER HORIZON</span><h2>{country === "us" ? "More of a\nCanada person?" : "An American\nchapter instead?"}</h2><button className="text-link" onClick={() => changeCountry(country === "us" ? "ca" : "us")}>Explore {country === "us" ? "Canada" : "the United States"}<Arrow diagonal/></button></div>
-        <CountryMark country={country === "us" ? "ca" : "us"} className="other-destination-mark"/>
+        <CountryFlag country={country === "us" ? "ca" : "us"} className="other-destination-mark"/>
       </section>
 
       <section id="country-questions" className="questions-section section-shell">
