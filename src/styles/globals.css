@@ -29,11 +29,15 @@
 }
 
 :root {
+  --control-primary: #e9e8e2;
+  --control-primary-hover: #fff;
+  --control-primary-text: #141414;
+  --control-radius: 999px;
   --background: #121212;
   --foreground: #eeede8;
   --card: #191919;
-  --primary: #eeede8;
-  --primary-foreground: #171717;
+  --primary: var(--control-primary);
+  --primary-foreground: var(--control-primary-text);
   --secondary: #242424;
   --muted: #242424;
   --muted-foreground: #aaa7a1;
@@ -59,12 +63,29 @@
 }
 
 .onboarding-dialog {
-  --foreground: #ededed;
-  --primary: #ededed;
-  --muted-foreground: #a3a3a3;
   overscroll-behavior: contain;
   font-family: 'DM Sans', sans-serif;
 }
 .onboarding-dialog:focus { outline: none; }
 .onboarding-dialog button { font: 500 14px/1.4 'DM Sans', sans-serif; }
 .onboarding-dialog button:focus-visible { outline: 1px solid #ededed !important; outline-offset: 2px; }
+.onboarding-dialog .onboarding-close { background: #121212d9; color: #eeede8; }
+.onboarding-dialog .onboarding-close:hover { background: #121212; }
+
+button.pathway-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px 20px;
+  border: 0;
+  border-radius: var(--control-radius);
+  font: 550 13px/1.4 'DM Sans', sans-serif;
+  transition: background-color .2s, color .2s;
+}
+.pathway-button.pathway-button--primary { background: var(--control-primary); color: var(--control-primary-text); }
+.pathway-button.pathway-button--primary:hover { background: var(--control-primary-hover); }
+.pathway-button.pathway-button--secondary { background: transparent; color: var(--muted-foreground); }
+.pathway-button.pathway-button--secondary:hover { background: #ffffff0c; color: var(--foreground); }
+.pathway-button:focus-visible { outline: 1px solid var(--foreground) !important; outline-offset: 3px; }
+.pathway-button:disabled { opacity: .5; cursor: not-allowed; }

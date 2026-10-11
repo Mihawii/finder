@@ -64,20 +64,29 @@ project, use `npx shadcn@latest add <component>`.
 
 ### Onboarding dialog
 
-`components/ui/onboarding-dialog.tsx` uses a compact, two-step Embla/Motion carousel
-with a heading, one sentence, and navigation. It has no photos or decorative labels.
+`components/ui/onboarding-dialog.tsx` uses a compact Embla/Motion carousel
+with a heading, destination photography, one sentence, and navigation.
+Its reference is [21st.dev's Onboarding Dialog](https://21st.dev/@patrick-xin/components/onboarding-dialog),
+retrieved through the 21st.dev MCP. `components/ui/button.tsx` uses its primary/secondary
+hierarchy with the existing landing-page pill shape. Shared `--control-*` tokens in
+`src/styles/globals.css` keep action colors and radii consistent across the landing
+page, onboarding, and consent dialog.
 `components/ui/demo.tsx` is the standalone usage example, including restart behavior.
 The production integration opens from the destination CTA or a pathway button in
 `src/country-experience.jsx`. It uses the destination-specific slides in
-`lib/onboarding-slides.ts` and retains the selected U.S. travel intent.
+`lib/onboarding-slides.ts`. Canada has two introductory steps leading into the
+existing assessment. The U.S. entry shows its actual availability and offers an
+explicit switch to Canada; it does not redirect users to external visa guides or
+run U.S. profiles through Canadian scoring.
 
 The component accepts `defaultOpen`, `slides`, `onComplete`, `onSkip`,
-`onDismiss`, and `showRestart`. Each slide has `id`, `title`, and `description`.
+`onDismiss`, `showRestart`, and `completeLabel`. Each slide has `id`, `title`, `description`, `image`, and `alt`.
 State is local; no context provider, account, or persistent storage is
 needed. The introduction can be reopened from the same CTA, starting at the first slide.
 
 Next, Back, swiping, and Left/Right arrow keys navigate the slides. Skip and
-Continue lead to the Canadian consent dialog or the U.S. visa explorer.
+Start assessment lead to the Canadian consent dialog. The U.S. entry's Explore
+Canada button switches destinations; Back closes the dialog.
 The close button and Escape return to the landing page. The native modal dialog
 traps focus, restores focus on close, and locks background scrolling. It fits mobile
 screens, scrolls on short viewports, and respects reduced-motion preferences.

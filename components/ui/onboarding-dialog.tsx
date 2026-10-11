@@ -3,7 +3,10 @@ import { createPortal } from "react-dom"
 import { motion, useReducedMotion } from "motion/react"
 import useEmblaCarousel from "embla-carousel-react"
 import { X } from "lucide-react"
+import { Button } from "@/components/ui/button"
 import { onboardingSlides, type OnboardingSlide } from "@/lib/onboarding-slides"
+
+// Adapted from 21st.dev MCP: https://21st.dev/@patrick-xin/components/onboarding-dialog
 
 export type OnboardingDialogProps = {
   defaultOpen?: boolean
@@ -12,6 +15,7 @@ export type OnboardingDialogProps = {
   onSkip?: () => void
   onDismiss?: () => void
   showRestart?: boolean
+  completeLabel?: string
 }
 
 export function OnboardingDialog({
@@ -21,6 +25,7 @@ export function OnboardingDialog({
   onSkip,
   onDismiss,
   showRestart = true,
+  completeLabel = "Continue",
 }: OnboardingDialogProps) {
   const [open, setOpen] = React.useState(defaultOpen)
   const [activeIndex, setActiveIndex] = React.useState(0)
@@ -77,13 +82,11 @@ export function OnboardingDialog({
 
   if (!open) {
     return showRestart ? (
-      <button
-        type="button"
+      <Button
         onClick={() => { setActiveIndex(0); setOpen(true) }}
-        className="rounded-md border-0 bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
       >
         Restart Onboarding
-      </button>
+      </Button>
     ) : null
   }
 
@@ -93,7 +96,7 @@ export function OnboardingDialog({
       tabIndex={-1}
       aria-labelledby={titleId}
       aria-describedby={descriptionId}
-      className="onboarding-dialog m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-sm overflow-y-auto rounded-xl border border-border bg-background p-0 text-foreground backdrop:bg-black/65"
+      className="onboarding-dialog m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md overflow-y-auto rounded-2xl border border-border bg-background p-0 text-foreground backdrop:bg-black/65"
       onCancel={(event) => { event.preventDefault(); close(onDismiss) }}
       onKeyDown={(event) => {
         if (event.key === "Tab") {
@@ -108,30 +111,35 @@ export function OnboardingDialog({
         if (event.key === "ArrowLeft") { event.preventDefault(); emblaApi?.scrollPrev(Boolean(reducedMotion)) }
       }}
     >
-      <motion.div initial={reducedMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.12 }} className="relative p-5">
-        <button type="button" onClick={() => close(onDismiss)} aria-label="Close onboarding" className="absolute top-3 right-3 z-10 flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground">
+      <motion.div initial={reducedMotion ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.12 }} className="relative p-3">
+        <button type="button" onClick={() => close(onDismiss)} aria-label="Close onboarding" className="onboarding-close absolute top-5 right-5 z-10 flex size-9 items-center justify-center rounded-full">
           <X size={16} aria-hidden="true" />
         </button>
         <div ref={emblaRef} className="overflow-hidden" role="region" aria-roledescription="carousel" aria-label="Getting started">
           <div className="flex touch-pan-y">
             {slides.map((slide, index) => (
               <div key={slide.id} className="min-w-0 flex-[0_0_100%]" role="group" aria-roledescription="slide" aria-label={`${index + 1} of ${slides.length}`} aria-hidden={index !== activeIndex}>
-                <h2 id={index === activeIndex ? titleId : undefined} className="pr-8 text-lg leading-7 font-semibold tracking-tight">{slide.title}</h2>
-                <p id={index === activeIndex ? descriptionId : undefined} className="mt-1.5 text-sm leading-[1.5] text-muted-foreground">{slide.description}</p>
+                <img src={slide.image} alt={slide.alt} width={1200} height={675} draggable={false} className="block aspect-video h-auto w-full rounded-lg object-cover" />
+                <div className="px-2 pt-4">
+                  <h2 id={index === activeIndex ? titleId : undefined} className="text-xl leading-7 font-semibold tracking-tight">{slide.title}</h2>
+                  <p id={index === activeIndex ? descriptionId : undefined} className="mt-1.5 text-sm leading-[1.5] text-muted-foreground">{slide.description}</p>
+                </div>
               </div>
             ))}
           </div>
         </div>
         <span className="sr-only" aria-live="polite" aria-atomic="true">{currentSlide.title}</span>
-        <div className="mt-4 flex items-center justify-between gap-2">
-          {activeIndex > 0 ? (
-            <button type="button" onClick={() => emblaApi?.scrollPrev(Boolean(reducedMotion))} className="min-h-10 rounded-md px-3 py-2 text-muted-foreground hover:bg-accent hover:text-foreground">Back</button>
+        <div className="mt-4 flex items-center justify-between gap-2 px-1 pb-1">
+          {slides.length === 1 ? (
+            <Button variant="secondary" onClick={() => close(onDismiss)}>Back</Button>
+          ) : activeIndex > 0 ? (
+            <Button variant="secondary" onClick={() => emblaApi?.scrollPrev(Boolean(reducedMotion))}>Back</Button>
           ) : (
-            <button type="button" onClick={() => close(onSkip ?? onComplete)} className="min-h-10 rounded-md px-3 py-2 text-muted-foreground hover:bg-accent hover:text-foreground">Skip</button>
+            <Button variant="secondary" onClick={() => close(onSkip ?? onComplete)}>Skip</Button>
           )}
-          <button type="button" onClick={() => isLastSlide ? close(onComplete) : emblaApi?.scrollNext(Boolean(reducedMotion))} className="min-h-10 rounded-md bg-primary px-4 py-2 text-primary-foreground hover:bg-primary/90">
-            {isLastSlide ? "Continue" : "Next"}
-          </button>
+          <Button onClick={() => isLastSlide ? close(onComplete) : emblaApi?.scrollNext(Boolean(reducedMotion))}>
+            {isLastSlide ? completeLabel : "Next"}
+          </Button>
         </div>
       </motion.div>
     </dialog>,

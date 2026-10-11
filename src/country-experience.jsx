@@ -2,7 +2,6 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useSta
 import { gsap } from "gsap";
 import { CustomEase } from "gsap/CustomEase";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { X } from "lucide-react";
 import { onboardingSlides } from "@/lib/onboarding-slides";
 import "./country-experience.css";
 
@@ -24,13 +23,13 @@ const DESTINATIONS = {
     name: "United States", short: "USA", greeting: "Hello,", headline: "America.",
     image: "/images/united-states.jpg", imageAlt: "The Statue of Liberty beneath an open New York sky",
     location: "Liberty Island, New York", coordinates: "40°41′ N  74°02′ W",
-    cta: "Find my U.S. visa", intent: "I’m planning to…", promise: "A little clarity. A world of possibility.",
-    detail: "A new destination comes with new questions. Start with your purpose, get to know the visa categories, and find the official information for your next step.",
+    cta: "U.S. assessments", intent: "I’m planning to…", promise: "Your profile. Your possibilities.",
+    detail: "PathwayFinder builds a personalized immigration assessment from your profile. Canadian assessments are available now; U.S. assessments are not yet available.",
     options: [
-      { id: "visit", title: "Visit & discover", subtitle: "Tourism & business", code: "B-1 / B-2", description: "Explore visitor visas for a temporary trip, tourism, or permitted business activities.", href: "https://travel.state.gov/content/travel/en/us-visas/tourism-visit/visitor.html", action: "Read the visitor visa guide" },
-      { id: "study", title: "Study & grow", subtitle: "Academic & vocational study", code: "F / M", description: "Explore student visa categories and the steps that follow acceptance by a U.S. school.", href: "https://travel.state.gov/content/travel/en/us-visas/study/student-visa.html", action: "Read the student visa guide" },
-      { id: "work", title: "Work & create", subtitle: "Temporary employment", code: "WORK", description: "Explore temporary work visa categories. The relevant route depends on your work and circumstances.", href: "https://travel.state.gov/content/travel/en/us-visas/employment/temporary-worker-visas.html", action: "Explore work visa categories" },
-      { id: "settle", title: "Make it home", subtitle: "Permanent immigration", code: "IMMIGRATE", description: "Explore the official overview of immigrant visa routes and their application processes.", href: "https://travel.state.gov/content/travel/en/us-visas/immigrate.html", action: "Explore immigrant visas" },
+      { id: "visit", title: "Visit & discover", subtitle: "Tourism & business" },
+      { id: "study", title: "Study & grow", subtitle: "Academic & vocational study" },
+      { id: "work", title: "Work & create", subtitle: "Temporary employment" },
+      { id: "settle", title: "Make it home", subtitle: "Permanent immigration" },
     ],
   },
   ca: {
@@ -126,33 +125,6 @@ function DestinationSwitch({ country, onChange, disabled = false }) {
   </div>;
 }
 
-function VisaExplorer({ onClose, initialIntent = "visit" }) {
-  const [intent, setIntent] = useState(initialIntent);
-  const dialog = useRef(null);
-  const route = DESTINATIONS.us.options.find((option) => option.id === intent);
-  useEffect(() => {
-    const previous = document.activeElement;
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    dialog.current.showModal();
-    dialog.current.focus({ preventScroll: true });
-    return () => { document.body.style.overflow = overflow; previous?.focus(); };
-  }, []);
-  return <dialog className="visa-dialog" ref={dialog} tabIndex={-1} onCancel={onClose} onClick={(event) => {
-    if (event.target !== dialog.current) return;
-    const bounds = dialog.current.getBoundingClientRect();
-    if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) onClose();
-  }} aria-labelledby="visa-dialog-title">
-    <button className="dialog-close" onClick={onClose} aria-label="Close visa explorer"><X size={16} aria-hidden="true" /></button>
-    <h2 id="visa-dialog-title">Find a U.S. visa</h2>
-    <div className="intent-options" role="group" aria-label="Purpose of your journey">
-      {DESTINATIONS.us.options.map((option) => <button key={option.id} aria-pressed={intent === option.id} onClick={() => setIntent(option.id)}>{{ visit: "Visit", study: "Study", work: "Work", settle: "Move" }[option.id]}</button>)}
-    </div>
-    <div className="visa-route" aria-live="polite"><p>{{ visit: "Visitor visas for tourism and business.", study: "Student visas for academic or vocational study.", work: "Temporary work visas for different types of employment.", settle: "Immigrant visa routes for living in the U.S." }[intent]}</p><a className="visa-guide" href={route.href} target="_blank" rel="noreferrer">View official guide</a></div>
-    <div className="visa-footer"><p>Guidance only. No eligibility assessment.</p><a href="https://travel.state.gov/content/travel/en/us-visas/visa-information-resources/wizard.html" target="_blank" rel="noreferrer">Visa Wizard</a></div>
-  </dialog>;
-}
-
 function getInitialCountry() {
   const query = new URLSearchParams(window.location.search).get("country");
   if (query === "us" || query === "ca") return query;
@@ -163,8 +135,7 @@ export default function CountryExperience({ onStartCanada }) {
   const [country, setCountry] = useState(getInitialCountry);
   const [arriving, setArriving] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [explorer, setExplorer] = useState(null);
-  const [onboardingIntent, setOnboardingIntent] = useState(null);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
   const root = useRef(null);
   const main = useRef(null);
   const menu = useRef(null);
@@ -278,8 +249,7 @@ export default function CountryExperience({ onStartCanada }) {
   const changeCountry = (next) => {
     if (next === country || arriving) return;
     setMenuOpen(false);
-    setExplorer(null);
-    setOnboardingIntent(null);
+    setOnboardingOpen(false);
     setCountry(next);
     setArriving(true);
     const url = new URL(window.location.href);
@@ -287,14 +257,13 @@ export default function CountryExperience({ onStartCanada }) {
     window.history.replaceState({}, "", url);
     window.scrollTo({ top: 0, behavior: "instant" });
   };
-  const start = (intent = "visit") => {
-    setOnboardingIntent(intent);
+  const start = () => {
+    setOnboardingOpen(true);
   };
   const finishOnboarding = () => {
-    const intent = onboardingIntent;
-    setOnboardingIntent(null);
+    setOnboardingOpen(false);
     if (country === "ca") onStartCanada();
-    else setExplorer(intent);
+    else changeCountry("ca");
   };
   const scrollTo = (id) => {
     setMenuOpen(false);
@@ -333,18 +302,18 @@ export default function CountryExperience({ onStartCanada }) {
       <section id="country-pathways" className="pathways-section section-shell">
         <div className="section-heading" data-scroll-reveal><div><span className="eyebrow">01 / FIND YOUR DIRECTION</span><h2>One destination.<br/><em>Different possibilities.</em></h2></div><p>{country === "us" ? "A visit, a degree, a career, a fresh start. Tell us what’s next for you." : "There’s more than one way forward. Discover where your experience could take you."}</p></div>
         <div className="pathway-list">
-          {destination.options.map((option, index) => <button className="country-pathway" key={option.id} data-scroll-reveal onClick={() => start(option.id)}><span className="pathway-number">0{index + 1}</span><span className="pathway-title">{option.title}</span><span className="pathway-subtitle">{option.subtitle}</span><span className="pathway-arrow"><Arrow diagonal/></span></button>)}
+          {destination.options.map((option, index) => <button className="country-pathway" key={option.id} data-scroll-reveal onClick={() => start()}><span className="pathway-number">0{index + 1}</span><span className="pathway-title">{option.title}</span><span className="pathway-subtitle">{option.subtitle}</span><span className="pathway-arrow"><Arrow diagonal/></span></button>)}
         </div>
-        <div className="pathway-footnote" data-scroll-reveal><span className="country-dot"/><span>{country === "ca" ? "Your profile. Your CRS score. A clearer starting point." : "Explore visa categories with official U.S. Department of State resources."}</span></div>
+        <div className="pathway-footnote" data-scroll-reveal><span className="country-dot"/><span>{country === "ca" ? "Your profile. Your CRS score. A clearer starting point." : "Personalized assessments are currently available for Canada."}</span></div>
       </section>
 
       <section id="country-process" className="process-section section-shell">
         <div className="process-intro" data-scroll-reveal><span className="eyebrow">02 / A LITTLE DIRECTION GOES A LONG WAY</span><h2>{destination.promise.split(". ")[0]}.<br/><em>{destination.promise.split(". ")[1]}</em></h2><p>{destination.detail}</p><button className="text-link" onClick={() => start()}>Let’s find your direction <Arrow diagonal/></button></div>
         <div className="process-steps">
           {(country === "us" ? [
-            ["Start with your why.", "Choose the purpose of your trip: visiting, studying, working, or making a new home."],
-            ["Get your bearings.", "Explore the visa category related to your plans. No confusing wall of options."],
-            ["Take an informed next step.", "Continue to the official guide for requirements and application instructions."],
+            ["Build your profile.", "Tell us about your education, work, language skills, and plans."],
+            ["See your options.", "Get an assessment based on your background and destination."],
+            ["Plan your next steps.", "Review your personalized report, pathways, and action plan."],
           ] : [
             ["Tell your story.", "A guided profile covering your education, language skills, experience, and connections."],
             ["See where you stand.", "Get your calculated CRS score and understand the factors that shape it."],
@@ -364,7 +333,7 @@ export default function CountryExperience({ onStartCanada }) {
         <div className="question-list" data-scroll-reveal>
           {[
             ["Is PathwayFinder a government service?", "No. PathwayFinder is an independent informational service, not affiliated with the U.S. or Canadian governments. Applications and decisions are handled by the relevant government authorities."],
-            [country === "us" ? "Can I get a personalized U.S. assessment?" : "What does the Canadian assessment include?", country === "us" ? "Not yet. The U.S. experience currently helps you explore visa categories and connects you with official resources. Personalized U.S. assessments are still to come." : "The guided questionnaire collects your profile and calculates your CRS score. The existing report flow can help you explore potential pathways and next steps. A score or report is not a guarantee of eligibility or approval."],
+            [country === "us" ? "Can I get a personalized U.S. assessment?" : "What does the Canadian assessment include?", country === "us" ? "Not yet. Personalized assessments currently cover Canada, including your profile, CRS score, and immigration pathways. U.S. assessments are not yet available." : "The guided questionnaire collects your profile and calculates your CRS score. The existing report flow can help you explore potential pathways and next steps. A score or report is not a guarantee of eligibility or approval."],
             ["Will you submit my application?", "No. We help you find direction. You remain responsible for checking current requirements and applying through the relevant official process. For advice on your circumstances, consult a qualified immigration professional."],
           ].map(([question, answer]) => <details key={question}><summary>{question}<span aria-hidden="true">+</span></summary><p>{answer}</p></details>)}
         </div>
@@ -372,7 +341,6 @@ export default function CountryExperience({ onStartCanada }) {
       <footer className="country-footer section-shell"><div className="footer-top"><Brand/><span>Great journeys start with a little direction.</span><button onClick={() => scrollTo("country-home")} aria-label="Back to top">↑</button></div><div className="footer-bottom"><span>© {new Date().getFullYear()} PathwayFinder</span><span>Independent guidance. Not legal or immigration advice.</span><span>DESIGNED FOR YOUR NEXT CHAPTER ↗</span></div></footer>
     </main>
     {arriving && <Arrival key={country} country={country} reduced={reduced} sceneRef={main} onComplete={finishArrival} />}
-    {onboardingIntent !== null && <Suspense fallback={<span className="sr-only" role="status">Opening your introduction…</span>}><OnboardingDialog slides={onboardingSlides[country]} onComplete={finishOnboarding} onSkip={finishOnboarding} onDismiss={() => setOnboardingIntent(null)} showRestart={false} /></Suspense>}
-    {explorer && <VisaExplorer initialIntent={explorer} onClose={() => setExplorer(null)}/>}
+    {onboardingOpen && <Suspense fallback={<span className="sr-only" role="status">Opening your introduction…</span>}><OnboardingDialog slides={onboardingSlides[country]} completeLabel={country === "ca" ? "Start assessment" : "Explore Canada"} onComplete={finishOnboarding} onSkip={finishOnboarding} onDismiss={() => setOnboardingOpen(false)} showRestart={false} /></Suspense>}
   </div>;
 }
