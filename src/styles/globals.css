@@ -55,10 +55,16 @@
   }
 
   .onboarding-dialog :is(h2, p) { margin: 0; }
-  .onboarding-dialog img { display: block; max-width: 100%; }
   .onboarding-dialog button { background-color: transparent; }
 }
 
-.onboarding-dialog { overscroll-behavior: contain; }
+.onboarding-dialog {
+  --foreground: #ededed;
+  --primary: #ededed;
+  --muted-foreground: #a3a3a3;
+  overscroll-behavior: contain;
+  font-family: 'DM Sans', sans-serif;
+}
+.onboarding-dialog:focus { outline: none; }
 .onboarding-dialog button { font: 500 14px/1.4 'DM Sans', sans-serif; }
-.onboarding-heading { font-family: 'Instrument Serif', Georgia, serif; }
+.onboarding-dialog button:focus-visible { outline: 1px solid #ededed !important; outline-offset: 2px; }

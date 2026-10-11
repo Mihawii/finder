@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useSta
 import { gsap } from "gsap";
 import { CustomEase } from "gsap/CustomEase";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { X } from "lucide-react";
 import { onboardingSlides } from "@/lib/onboarding-slides";
 import "./country-experience.css";
 
@@ -134,19 +135,21 @@ function VisaExplorer({ onClose, initialIntent = "visit" }) {
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     dialog.current.showModal();
+    dialog.current.focus({ preventScroll: true });
     return () => { document.body.style.overflow = overflow; previous?.focus(); };
   }, []);
-  return <dialog className="visa-dialog" ref={dialog} onCancel={onClose} onClick={(event) => { if (event.target === dialog.current) onClose(); }} aria-labelledby="visa-dialog-title">
-    <button className="dialog-close" onClick={onClose} aria-label="Close visa explorer">×</button>
-    <span className="eyebrow"><CountryMark country="us" /> UNITED STATES / VISA EXPLORER</span>
-    <h2 id="visa-dialog-title">What brings you<br /><em>to America?</em></h2>
-    <p className="dialog-lead">Start with your purpose. We’ll point you toward the official guide.</p>
+  return <dialog className="visa-dialog" ref={dialog} tabIndex={-1} onCancel={onClose} onClick={(event) => {
+    if (event.target !== dialog.current) return;
+    const bounds = dialog.current.getBoundingClientRect();
+    if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) onClose();
+  }} aria-labelledby="visa-dialog-title">
+    <button className="dialog-close" onClick={onClose} aria-label="Close visa explorer"><X size={16} aria-hidden="true" /></button>
+    <h2 id="visa-dialog-title">Find a U.S. visa</h2>
     <div className="intent-options" role="group" aria-label="Purpose of your journey">
-      {DESTINATIONS.us.options.map((option) => <button key={option.id} aria-pressed={intent === option.id} onClick={() => setIntent(option.id)}>{option.title}</button>)}
+      {DESTINATIONS.us.options.map((option) => <button key={option.id} aria-pressed={intent === option.id} onClick={() => setIntent(option.id)}>{{ visit: "Visit", study: "Study", work: "Work", settle: "Move" }[option.id]}</button>)}
     </div>
-    <div className="visa-route" aria-live="polite"><span className="eyebrow">{route.code}</span><h3>{route.subtitle}</h3><p>{route.description}</p><a className="country-button" href={route.href} target="_blank" rel="noreferrer">{route.action}<Arrow diagonal /></a></div>
-    <p className="dialog-note">This explorer is a starting point, not an eligibility assessment. Requirements depend on your nationality and circumstances. U.S. personalized assessments are not yet available.</p>
-    <a className="text-link" href="https://travel.state.gov/content/travel/en/us-visas/visa-information-resources/wizard.html" target="_blank" rel="noreferrer">Not sure? Open the official Visa Wizard <Arrow diagonal /></a>
+    <div className="visa-route" aria-live="polite"><p>{{ visit: "Visitor visas for tourism and business.", study: "Student visas for academic or vocational study.", work: "Temporary work visas for different types of employment.", settle: "Immigrant visa routes for living in the U.S." }[intent]}</p><a className="visa-guide" href={route.href} target="_blank" rel="noreferrer">View official guide</a></div>
+    <div className="visa-footer"><p>Guidance only. No eligibility assessment.</p><a href="https://travel.state.gov/content/travel/en/us-visas/visa-information-resources/wizard.html" target="_blank" rel="noreferrer">Visa Wizard</a></div>
   </dialog>;
 }
 
@@ -369,7 +372,7 @@ export default function CountryExperience({ onStartCanada }) {
       <footer className="country-footer section-shell"><div className="footer-top"><Brand/><span>Great journeys start with a little direction.</span><button onClick={() => scrollTo("country-home")} aria-label="Back to top">↑</button></div><div className="footer-bottom"><span>© {new Date().getFullYear()} PathwayFinder</span><span>Independent guidance. Not legal or immigration advice.</span><span>DESIGNED FOR YOUR NEXT CHAPTER ↗</span></div></footer>
     </main>
     {arriving && <Arrival key={country} country={country} reduced={reduced} sceneRef={main} onComplete={finishArrival} />}
-    {onboardingIntent !== null && <Suspense fallback={<span className="sr-only" role="status">Opening your introduction…</span>}><OnboardingDialog slides={onboardingSlides[country]} label={country === "ca" ? "YOUR CANADIAN CHAPTER" : "YOUR AMERICAN CHAPTER"} onComplete={finishOnboarding} onSkip={finishOnboarding} onDismiss={() => setOnboardingIntent(null)} showRestart={false} /></Suspense>}
+    {onboardingIntent !== null && <Suspense fallback={<span className="sr-only" role="status">Opening your introduction…</span>}><OnboardingDialog slides={onboardingSlides[country]} onComplete={finishOnboarding} onSkip={finishOnboarding} onDismiss={() => setOnboardingIntent(null)} showRestart={false} /></Suspense>}
     {explorer && <VisaExplorer initialIntent={explorer} onClose={() => setExplorer(null)}/>}
   </div>;
 }
