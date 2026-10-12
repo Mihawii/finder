@@ -153,8 +153,10 @@ export const INITIAL_PROFILE = {
   currentProvince: "",
   siblingInCanada: "",
   provincialNomination: "",
+  nominationType: "",
   provincePreference: "",
   hasJobOffer: "",
+  workAuthorizedInCanada: "",
   settlementFunds: "",
   previousRefusals: "",
   criminalHistory: "",
@@ -164,6 +166,9 @@ export const INITIAL_PROFILE = {
 
 export function updateAssessmentProfile(prev, key, value) {
   const next = { ...prev, [key]: value };
+
+  if (key === "provincialNomination" && value !== "Yes") next.nominationType = "";
+  if (key === "hasJobOffer" && value !== "Yes") next.workAuthorizedInCanada = "";
 
   if (key === "maritalStatus" && value !== "Married" && value !== "Common-law") {
     next.spouseAccompanying = "";

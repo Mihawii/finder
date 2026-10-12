@@ -1,38 +1,33 @@
 # CRS Calculator Rules — PathwayFinder
 
-## Purpose
-This file defines the exact CRS (Comprehensive Ranking System) scoring rules that the calculator in `src/App.jsx` must follow. These rules are verified against the official IRCC CRS calculator at canada.ca/express-entry.
+## Scope and source
 
-Any time the CRS calculator is modified, check this file to ensure compliance.
+The shared calculator is `functions/lib/assessment/crs.js`; the browser and server import the same implementation. `profile.js` maps questionnaire answers, and `validation.js` validates raw test scores and recalculates all CLBs and the score. Do not trust scores supplied by the client or model.
 
----
+The CRS rows and corrections below were checked against [IRCC CRS criteria](https://www.canada.ca/en/immigration-refugees-citizenship/services/immigrate-canada/express-entry/check-score/crs-criteria.html) on **2026-10-11**. Language tables were checked against [IRCC language-test guidance](https://www.canada.ca/en/immigration-refugees-citizenship/services/immigrate-canada/express-entry/documents/language-test.html). This review did not refresh program availability, draw results or the `IMMIGRATION_DATA*.md` snapshots.
 
-## CRITICAL BUG FIXES NEEDED
+The result is a points calculation from supplied factors, not a finding of Express Entry eligibility. Qualification of work/education, ECA validity, language-test expiry and supporting documents still require review. The questionnaire uses English first and French second and does not optimize language designation. Certificate-of-qualification points are not implemented because the necessary intake is missing. Keep these limits visible rather than claiming a complete official calculator.
 
-> ✅ **STATUS (verified 2026-06-15):** All three bugs below were ALREADY FIXED in the current code (correct since commit c21f138) and verified against official IRCC criteria. They are retained here as historical record only — do NOT re-fix working code. A separate fix (second-language with-spouse subtotal capped at 22) was added 2026-06-15.
+## Historical fixes — retain, do not redo
 
-### Bug 1: Spouse Column Logic — ✅ FIXED (verified 2026-06-15)
-**Current behavior:** If person is married, always uses "spouse" column (lower points).
-**Correct behavior:** Use "single" column (higher points) if ANY of these are true:
-- Person is single/divorced/widowed (no spouse)
-- Person has spouse but spouse is NOT accompanying to Canada
-- Person's spouse IS a Canadian citizen or permanent resident
+- **Verified 2026-06-15, already correct since `c21f138`:** spouse-column selection applies only to an accompanying spouse/common-law partner who is not a Canadian citizen/PR. Non-accompanying or Canadian spouses use the single column.
+- **Verified 2026-06-15, already correct since `c21f138`:** French bonus is 50 with NCLC 7+ and English CLB 5+ in every ability; otherwise 25 with French NCLC 7+.
+- **Verified 2026-06-15, already correct since `c21f138`:** PTE Core, TEF and TCF conversions are implemented. They do not return zero for every profile.
+- **Fixed 2026-06-15:** second-language subtotal is capped at 22 with spouse factors, 24 otherwise.
 
-Use "spouse" column (lower points) ONLY if:
-- Person has a spouse AND spouse IS accompanying AND spouse is NOT a Canadian citizen/PR
+These were previously described as open bugs in older memory files. They are not outstanding work.
 
-**Form change needed:** Add question: "Is your spouse or common-law partner a citizen or permanent resident of Canada?" (Yes/No)
+## Additional corrections — 2026-10-11
 
-### Bug 2: French Bonus Points — ✅ FIXED (verified 2026-06-15)
-**Current code:** `if (frMin >= 7 && minClb >= 5) addPts += 25; else if (frMin >= 7) addPts += 50;`
-**Correct logic:**
-- French NCLC 7+ in all abilities AND English CLB 5+ in all abilities = **50 points** (bilingual bonus)
-- French NCLC 7+ in all abilities WITHOUT English CLB 5+ = **25 points**
-**Fix:** Swap the 25 and 50.
+- First-language CLB 4 earns 6 points per ability, previously 0.
+- Four years of principal-applicant Canadian work in the spouse column earns 63, previously 64.
+- Spouse Canadian work at 2/3/4 years earns 7/8/9, previously 8/9/10.
+- A single one-year, two-year or bachelor's credential uses the 13/25 transferability band. The higher band requires two qualifying credentials, a master's/professional degree or doctorate.
+- Education transferability combinations share a 50-point cap; foreign-work combinations share another 50-point cap. Apply the overall 100-point cap after those group caps.
+- Only an explicitly identified Express Entry nomination sets the 600-point scoring flag. Non-Express Entry and unknown nomination types are retained separately and add no nomination points. See [IRCC nomination confirmation](https://www.canada.ca/en/immigration-refugees-citizenship/services/immigrate-canada/provincial-nominees/express-entry/get-confirm-nomination.html); nomination acceptance/validity still requires checking.
+- Unknown TEER is `null`, never an assumed TEER 1. “No test yet” remains no test; missing answers are not invented facts.
 
-### Bug 3: PTE Core / TEF / TCF Return Zero — ✅ FIXED (verified 2026-06-15)
-**Current behavior:** `convertToClb()` returns all zeros for PTE Core, TEF Canada, and TCF Canada.
-**Fix needed:** Add proper conversion tables for these tests. See conversion tables below.
+Regression coverage is in `tests/assessment.test.js`. Do not restore the old mislabeled IELTS/CLB examples; corrected fixtures appear below.
 
 ---
 
@@ -116,7 +111,7 @@ Max: 136 (single), 128 (with spouse) — 4 abilities × max per ability
 | CLB 7-8 | 3 | 3 |
 | CLB 9+ | 6 | 6 |
 
-Max: 24 (single), 24 (with spouse)
+Max: 24 (single), **22 (with spouse)**
 
 ---
 
@@ -128,7 +123,7 @@ Max: 24 (single), 24 (with spouse)
 | 1 year | 40 | 35 |
 | 2 years | 53 | 46 |
 | 3 years | 64 | 56 |
-| 4 years | 72 | 64 |
+| 4 years | 72 | 63 |
 | 5+ years | 80 | 70 |
 
 ---
@@ -136,6 +131,7 @@ Max: 24 (single), 24 (with spouse)
 ## SPOUSE FACTORS (only if spouse is accompanying AND not Canadian citizen/PR)
 
 ### Spouse Education
+
 | Level | Points |
 |-------|--------|
 | Less than high school | 0 |
@@ -148,6 +144,7 @@ Max: 24 (single), 24 (with spouse)
 | PhD | 10 |
 
 ### Spouse Language (per ability)
+
 | CLB | Points |
 |-----|--------|
 | CLB 4 or less | 0 |
@@ -158,49 +155,64 @@ Max: 24 (single), 24 (with spouse)
 Max: 20 (4 abilities × 5)
 
 ### Spouse Canadian Work
+
 | Years | Points |
 |-------|--------|
 | None | 0 |
 | 1 year | 5 |
-| 2 years | 8 |
-| 3 years | 9 |
-| 4 years | 10 |
+| 2 years | 7 |
+| 3 years | 8 |
+| 4 years | 9 |
 | 5+ years | 10 |
 
 ---
 
 ## SKILL TRANSFERABILITY (max 100 total)
 
-Five combinations, each capped at 50 points. Total capped at 100.
+The two education combinations share a **50-point education cap**. The two foreign-work combinations share a **50-point foreign-work cap**. The current implementation computes:
+
+```js
+Math.min(Math.min(educationLanguage + educationCanadianWork, 50)
+       + Math.min(foreignLanguage + foreignCanadianWork, 50), 100)
+```
+
+“Two qualifying credentials” means two or more post-secondary credentials with at least one program of three years or longer. All first-language abilities must reach the indicated CLB threshold. “CLB 7-8” means every ability is at least 7 and at least one is below 9. Secondary education or less gives zero education-transferability points.
 
 ### 1. Education + Language
+
 | Education | CLB 7-8 | CLB 9+ |
 |-----------|---------|--------|
-| 1-year post-secondary | 13 | 25 |
-| 2+ year post-secondary or higher | 25 | 50 |
+| One post-secondary credential of 1+ year, including a bachelor's | 13 | 25 |
+| Two qualifying credentials, master's/professional degree or PhD | 25 | 50 |
 
 ### 2. Education + Canadian Work
+
 | Education | 1 year CAN work | 2+ years CAN work |
 |-----------|-----------------|-------------------|
-| 1-year post-secondary | 13 | 25 |
-| 2+ year post-secondary or higher | 25 | 50 |
+| One post-secondary credential of 1+ year, including a bachelor's | 13 | 25 |
+| Two qualifying credentials, master's/professional degree or PhD | 25 | 50 |
 
 ### 3. Foreign Work + Language
+
 | Foreign Work | CLB 7-8 | CLB 9+ |
 |-------------|---------|--------|
 | 1-2 years | 13 | 25 |
 | 3+ years | 25 | 50 |
 
 ### 4. Foreign Work + Canadian Work
+
 | Foreign Work | 1 year CAN work | 2+ years CAN work |
 |-------------|-----------------|-------------------|
 | 1-2 years | 13 | 25 |
 | 3+ years | 25 | 50 |
 
-### 5. Certificate of Qualification + Language
+### 5. Certificate of Qualification + Language — not implemented
+
 | Certificate | CLB 5-6 | CLB 7+ |
 |------------|---------|--------|
 | Has certificate | 25 | 50 |
+
+These official factors need additional intake and qualified review before implementation; the current calculator does not award them. Do not imply it supports every trades profile.
 
 ---
 
@@ -208,7 +220,7 @@ Five combinations, each capped at 50 points. Total capped at 100.
 
 | Factor | Points |
 |--------|--------|
-| Provincial/territorial nomination | 600 |
+| Confirmed Express Entry provincial/territorial nomination | 600 |
 | Canadian education (1-2 years) | 15 |
 | Canadian education (3+ years) | 30 |
 | Sibling in Canada (citizen/PR, 18+) | 15 |
@@ -221,6 +233,7 @@ Five combinations, each capped at 50 points. Total capped at 100.
 ## LANGUAGE TEST CONVERSION TABLES
 
 ### IELTS General Training → CLB
+
 | CLB | Reading | Writing | Listening | Speaking |
 |-----|---------|---------|-----------|----------|
 | 10 | 8.0 | 7.5 | 8.5 | 7.5 |
@@ -235,6 +248,7 @@ Five combinations, each capped at 50 points. Total capped at 100.
 CELPIP scores map directly: CELPIP 4 = CLB 4, CELPIP 5 = CLB 5, ... CELPIP 10+ = CLB 10
 
 ### PTE Core → CLB
+
 | CLB | Reading | Writing | Listening | Speaking |
 |-----|---------|---------|-----------|----------|
 | 10 | 88 | 90 | 89 | 89 |
@@ -246,6 +260,9 @@ CELPIP scores map directly: CELPIP 4 = CLB 4, CELPIP 5 = CLB 5, ... CELPIP 10+ =
 | 4 | 33 | 41 | 28 | 42 |
 
 ### TEF Canada → CLB (NCLC)
+
+Use the certificate's **Équivalence ancien score** column, not **Score / 699**. The API rejects values outside this scale; do not mix the two scales.
+
 | CLB/NCLC | Compréhension écrite (Reading) | Expression écrite (Writing) | Compréhension orale (Listening) | Expression orale (Speaking) |
 |----------|-------------------------------|----------------------------|--------------------------------|---------------------------|
 | 10 | 263-300 | 393-450 | 316-360 | 393-450 |
@@ -257,6 +274,7 @@ CELPIP scores map directly: CELPIP 4 = CLB 4, CELPIP 5 = CLB 5, ... CELPIP 10+ =
 | 4 | 121-150 | 181-225 | 145-180 | 181-225 |
 
 ### TCF Canada → CLB (NCLC)
+
 | CLB/NCLC | Compréhension écrite (Reading) | Expression écrite (Writing) | Compréhension orale (Listening) | Expression orale (Speaking) |
 |----------|-------------------------------|----------------------------|--------------------------------|---------------------------|
 | 10 | 549-699 | 16-20 | 549-699 | 16-20 |
@@ -271,24 +289,7 @@ CELPIP scores map directly: CELPIP 4 = CLB 4, CELPIP 5 = CLB 5, ... CELPIP 10+ =
 
 ## CATEGORY-BASED DRAW ELIGIBILITY
 
-Category-based draws target candidates working in specific sectors. Eligibility depends on having qualifying work experience in specific NOC (National Occupational Classification) codes within that sector.
-
-**TEER level alone does NOT determine category eligibility.** For example:
-- A TEER 1 software engineer qualifies for STEM draws but NOT healthcare draws
-- A TEER 1 nurse qualifies for healthcare draws but NOT STEM draws
-- A TEER 0 restaurant manager does NOT qualify for any category draw unless their specific NOC is listed
-
-**Category draw requirements (summary):**
-| Category | Requirement |
-|----------|-------------|
-| Healthcare & Social Services | 12+ months experience in eligible healthcare/social services NOC codes |
-| STEM | 12+ months experience in eligible STEM NOC codes |
-| Trade Occupations | 12+ months experience in eligible trades NOC codes |
-| Agriculture & Agri-food | 12+ months experience in eligible agriculture NOC codes |
-| Education | 12+ months experience in eligible education NOC codes |
-| French-language | NCLC 7+ in all abilities (sector-independent) |
-
-**Rule for the AI report:** If the user's specific occupation or sector is not provided, do NOT recommend category-based draws. Only recommend general draws (CEC, FSW, PNP, French-language). Note the missing information as a limitation.
+CRS points do not establish category-draw eligibility. TEER alone is insufficient: the current questionnaire does not capture an exact NOC and its qualifying work history, so it cannot establish occupation-category eligibility. Do not infer sector from education or occupation level. Requirements, category lists and invitation rounds must be checked against current official sources separately; no category list was refreshed during this scoring update.
 
 ---
 
@@ -304,33 +305,50 @@ Category-based draws target candidates working in specific sectors. Eligibility 
 
 ---
 
-## TEST PROFILE FOR VERIFICATION
+## REGRESSION PROFILES
 
-Use this profile to verify the calculator produces the correct score:
+The following fixtures assume the stated factors qualify for points. Unless mentioned, there is no French, Canadian work, spouse factor or additional point. Run `node --test tests/assessment.test.js`.
 
-**Test case: Single, age 30, Master's, IELTS 8/8/8/8, 3 years foreign work, 0 Canadian work, no French, no additional points**
+### 1. Actual IELTS bands — total 473
 
-Expected breakdown:
-- Age: 105 (single, age 30)
-- Education: 135 (single, Master's)
-- First Language: CLB 8 all = 23×4 = 92
-- Second Language: 0
-- Canadian Work: 0
-- Spouse: 0
-- Skill Transfer: Education(masters)+Language(CLB8) = 25, ForeignWork(3yr)+Language(CLB8) = 25 = 50
-- Additional: 0
-- **Total: 382**
+Single, age 30, master's, IELTS **8/8/8/8** (reading/writing/listening/speaking), three years foreign work:
 
-**Test case 2: Married with accompanying spouse, age 35, Bachelor's, IELTS 7/7/7/7, spouse has Master's and CLB 7**
+| Category | Points |
+|----------|--------|
+| Age | 105 |
+| Education | 135 |
+| First language: CLB 10/10/9/10 | 133 |
+| Skill transferability: education 50 + foreign work 50 | 100 |
+| Other factors | 0 |
+| **Total** | **473** |
 
-Expected breakdown:
-- Age: 77 → with spouse column = 70
-- Education: 120 → with spouse column = 112
-- First Language: CLB 7 all = 16×4 = 64 (spouse column)
-- Canadian Work: 0
-- Spouse education: Master's = 10
-- Spouse language: CLB 7×4 abilities = 3×4 = 12 (CLB 7-8 = 3 pts/ability; the 5 pts/ability rate applies only at CLB 9+)
-- Spouse Canadian work: 0
-- Skill Transfer: Education(bachelors)+Language(CLB7) = 25
-- Additional: 0
-- **Total: 293** (corrected 2026-06-15 — previously stated 301, which mistakenly used the CLB 9+ spouse-language rate of 5 for a CLB 7 input; the current code correctly produces 293)
+IELTS 8 in every skill does **not** mean CLB 8 in every skill. The older 382 example mislabeled this input.
+
+### 2. Explicit CLB 8 — total 382
+
+For the same profile with **CLB 8 in all abilities** (for example IELTS reading 6.5, writing 6.5, listening 7.5, speaking 6.5): age 105 + education 135 + language 92 + transferability 50 = **382**. `clb_direct` is an internal calculation/simulation tool, not a public server intake test type.
+
+### 3. Accompanying spouse, explicit CLB 7 — total 281
+
+Married, accompanying spouse who is not a Canadian citizen/PR, age 35, bachelor's, principal CLB 7 in all abilities, no foreign/Canadian work; spouse master's, CLB 7 in all abilities, no Canadian work:
+
+| Category | Points |
+|----------|--------|
+| Age | 70 |
+| Education | 112 |
+| First language | 64 |
+| Spouse education + language | 10 + 12 = 22 |
+| Education-language transferability | 13 |
+| Other factors | 0 |
+| **Total** | **281** |
+
+The old 301/293 totals used incorrect spouse-language or bachelor's transferability assumptions. If the principal instead has actual **IELTS 7/7/7/7**, their CLBs are 9/9/7/9, language contributes 103, and the total is **320**; the spouse remains explicitly CLB 7.
+
+### Boundary checks
+
+- CLB 4 in all first-language abilities: 24 language points.
+- Accompanying-spouse four-year Canadian work: 63 principal points.
+- Spouse work years 0/1/2/3/4/5+: 0/5/7/8/9/10.
+- Master's, CLB 9, two Canadian years, no foreign work: education transferability is capped at 50, not 100.
+- No education transferability, CLB 9, three foreign years and two Canadian years: foreign-work transferability is capped at 50, not 100.
+- Combined maximum remains 1,200; additional factors cannot exceed 600.

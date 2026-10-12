@@ -1,78 +1,70 @@
-# PathwayFinder - Agent Instructions
+# PathwayFinder — Agent Instructions
 
-## Project Overview
-PathwayFinder is an AI-powered Canadian immigration assessment tool. Users fill out a profile form, get a real-time CRS score, and receive a detailed AI-generated immigration report with ranked pathways, action plans, costs, and timelines.
+## Product and scope
 
-## Critical Rule: Always Commit After Changes
-Every agent MUST run the following after making any code changes:
+PathwayFinder is a Canadian immigration assessment followed by personalized results and an optional, partial application-preparation worksheet. The current prototype has no database, accounts or document uploads. Preparation drafts exist in browser memory only and disappear on refresh. A report PDF is not an official immigration form.
+
+Read `AGENTS.md` for the required 21st.dev references, shared controls, photography and country-flow preferences. Never route U.S. profiles through Canadian scoring. Do not represent preparation as a complete application, verified eligibility or an available filing service.
+
+## Critical rule: commit after changes
+
+Every agent MUST commit each logical code change with a descriptive message:
+
 ```bash
 git add .
 git commit -m "descriptive message of what changed"
 ```
-Do NOT skip this. Do NOT batch commits across multiple tasks. Commit immediately after each logical change.
 
-## First Steps for New Agents
-1. Read `.claude/projects/-Users-baha-Desktop-my-apps/memory/MEMORY.md` for the memory index
-2. Read `architecture.md` in the memory folder for full project structure
-3. Read `CRS_RULES.md`, `REPORT_RULES.md`, `IMMIGRATION_DATA.md`, `IMMIGRATION_DATA_UPDATES.md`, and `IMMIGRATION_DATA_LOGS.md` for domain rules
-4. Check recent git log to understand what's been worked on
+Do not skip the commit, batch unrelated tasks or force-push `main`. In coordinated work, respect file ownership and let the coordinating agent commit the integrated logical change; do not stage another agent's unfinished files.
 
-## Tech Stack
-- **Frontend:** React 18 + Vite (JSX, inline CSS, no framework)
-- **Backend:** Firebase Cloud Functions (Node.js 20 + Python 3.12)
-- **AI:** Anthropic Claude API (claude-sonnet-4-20250514) via @anthropic-ai/sdk
-- **PDF:** ReportLab (Python)
-- **Hosting:** Firebase Hosting
-- **Project ID:** pathwayfinder-3b040
+## First steps
 
-## Key Files
-| File | What It Does |
-|------|-------------|
-| `pathwayfinder-app (2).jsx` | **MAIN APP** (3,746 lines) - CRS calculator, form, AI integration, report rendering, promo gate |
-| `src/assessment_flow.jsx` | Form UI components (inputs, dropdowns, toggles) |
-| `src/main.jsx` | React entry point |
-| `functions/index.js` | Cloud Functions: analyzeProfile + validatePromoCode |
-| `functions/.env` | ANTHROPIC_KEY (never commit secrets) |
-| `pdf-function/generate_report.py` | PDF generation with ReportLab |
-| `pdf-function/main.py` | HTTP handler for PDF function |
-| `IMMIGRATION_DATA.md` | Static immigration program rules, costs, provincial structures |
-| `IMMIGRATION_DATA_UPDATES.md` | Dynamic draw results, CRS cutoffs, program changes (updated daily) |
-| `IMMIGRATION_DATA_LOGS.md` | Changelog for immigration data files |
-| `dev.config.js` | Dev mode config with mock data |
+1. Read `.claude/projects/-Users-baha-Desktop-my-apps/memory/MEMORY.md` and `architecture.md` there.
+2. Read `CRS_RULES.md`, `REPORT_RULES.md` and the three `IMMIGRATION_DATA*.md` files.
+3. Check recent git history and the working tree. Older memory notes may describe bugs already fixed; the current shared modules and regression tests are authoritative for implementation.
 
-## Commands
+## Stack and important files
+
+React 18 + Vite, shared pure JavaScript modules, Firebase Cloud Functions (Node 20 / Python 3.12), Anthropic (`claude-sonnet-4-6` in the current backend), ReportLab and Firebase Hosting. Firebase project: `pathwayfinder-3b040`.
+
+| File | Responsibility |
+|------|----------------|
+| `pathwayfinder-app (2).jsx` | Routing, assessment/results lifecycle, report rendering and service entry |
+| `src/assessment_flow.jsx`, `src/assessment-data.js` | Grouped questionnaire, conditional fields, review and form state |
+| `functions/lib/assessment/crs.js` | Shared language conversion and CRS calculation |
+| `functions/lib/assessment/profile.js` | Form-to-profile mapping; unknowns and nomination types |
+| `functions/lib/assessment/validation.js` | Input contract; canonical CLB and CRS recalculation |
+| `functions/lib/assessment/funds.js` | Versioned Express Entry funds rule and conditional exemptions |
+| `functions/lib/report.js` | Report v2 validation, deterministic scenarios, normalization and snapshot metadata |
+| `functions/index.js` | `analyzeProfile`, `validatePromoCode`, model prompt and snapshot loading |
+| `src/preparation-flow.jsx` | Session-only preparation wizard and partial text export |
+| `functions/lib/preparation/model.js`, `registry.js` | Confirmable facts, chronology checks, route scope and output coverage |
+| `pdf-function/main.py`, `generate_report.py` | Informational report PDF export; no official-form filling |
+| `tests/*.test.js` | Scoring, validation, report and preparation regression tests |
+
+Keep shared pure modules inside `functions/lib/` so Firebase deploys the same implementation the browser imports. Never duplicate scoring arithmetic in the UI or ask the model to calculate it. Never commit `functions/.env` or log applicant facts/model response bodies.
+
+## Verification
+
 ```bash
-npm install          # Install dependencies
-npm run dev          # Start dev server on http://localhost:3000
-npm run build        # Build to dist/
-firebase deploy      # Deploy hosting + functions
+npm run dev        # Vite on port 3000
+npm test           # Node regression tests
+npm run typecheck
+npm run build
 ```
 
-## Architecture Quick Reference
-```
-User fills form → CRS calculated locally → Promo code check →
-Cloud Function (analyzeProfile) → Claude API → JSON report →
-Report rendered in browser → Optional PDF download via Python function
-```
+Test the actual flows after contract/UI changes. `VITE_ANALYZE_PROFILE_URL` and `VITE_GENERATE_PDF_URL` override the existing production endpoints for staging or local services. Coordinate compatible hosting, Node-functions and PDF-function versions when deploying; a successful local build does not update hosted functions. The existing promo endpoint remains, but the report UI currently bypasses its gate for beta testing; it is not payment authorization.
 
-## Rules & Constraints
-- **No database** - app is stateless, no user accounts
-- **Promo code** PATHFINDER23 unlocks full report (free users see CRS + blurred report)
-- **CRS calculator** has known bugs documented in CRS_RULES.md - check before modifying
-- **AI system prompt** is in functions/index.js — instructions are hardcoded, immigration data is read from `IMMIGRATION_DATA.md` (static) and `IMMIGRATION_DATA_UPDATES.md` (dynamic) at runtime
-- **Immigration data** is split into 3 files: `IMMIGRATION_DATA.md` (static programs/costs), `IMMIGRATION_DATA_UPDATES.md` (draws/cutoffs, updated daily), `IMMIGRATION_DATA_LOGS.md` (changelog)
-- Never recommend Quebec programs or family sponsorship in AI reports
-- Settlement funds must be checked against family size minimums
+## Domain constraints
 
-## Known Bugs (from CRS_RULES.md)
-All three historically-documented CRS bugs were verified FIXED in the current code as of 2026-06-15 (correct since commit c21f138). Do NOT re-fix — the logic in `pathwayfinder-app (2).jsx` (calcCRS / convertToClb) already matches official IRCC criteria.
-1. ✅ FIXED — Spouse column logic (single vs spouse scoring): `useSpouseColumn` correctly gates on spouse accompanying AND not a Canadian citizen/PR.
-2. ✅ FIXED — French bonus: correctly awards 50 (NCLC 7+ with English CLB 5+) / 25 (NCLC 7+ otherwise).
-3. ✅ FIXED — PTE/TEF/TCF converters: conversion tables present and wired in `convertToClb`.
-4. ✅ FIXED (2026-06-15) — Second-language subtotal now clamped to 22 in the with-spouse column (24 single), per IRCC with-spouse max.
+- Validate normalized profiles on the server. Reject non-Canada input; ignore browser-supplied CLBs and breakdowns and recalculate from raw test scores.
+- Unknown answers remain unknown. `nocTeer: null` is not TEER 1. A non-Express Entry or unconfirmed nomination adds no CRS nomination points.
+- Report v2 has no approval percentages. Requirements use `true`, `false` or `null`; uncertainty must remain visible in the UI and exports.
+- CRS scenarios are conditional arithmetic, not eligibility, forecasts or spending recommendations. Preserve the previously fixed spouse-column, French-bonus and language-conversion logic; see `CRS_RULES.md` for the additional corrections verified on 2026-10-11.
+- Funds include both partners' dependent children and a spouse even if not accompanying. An offer-based exemption requires both a valid offer and work authorization. Do not infer a CEC application from work experience alone.
+- Never recommend Quebec programs, family sponsorship, unverified occupation categories or closed programs as available. Only include a study route when requested in the profile.
+- `IMMIGRATION_DATA.md` and `IMMIGRATION_DATA_UPDATES.md` are dated snapshots, not live/daily feeds. The updates file still records 2026-06-15 as its last fetch. The 2026-10-11 checks of CRS, language and funds sources do not refresh those program/draw snapshots.
 
-## Git Workflow
-- Main branch: `main`
-- Always commit with descriptive messages
-- Never force push to main
-- Keep commits atomic (one logical change per commit)
+## Before a production preparation service
+
+The current scope is a partial worksheet for adult, non-business nominees using the Canadian non-Express Entry PNP process. Authentication, persistent profiles, private document storage, professional review, authenticated portal mapping, official PDF compatibility/validation and complete family-member coverage are not implemented. Establish those capabilities and access/retention/deletion controls before claiming a saved or filing-ready application service. Keep published capability labels tied to tested coverage.

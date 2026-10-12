@@ -27,7 +27,10 @@ const scoreNames = ["Reading", "Writing", "Listening", "Speaking"];
 const scoreFields = (prefix, test) => scoreNames.map(label => ({
   key: prefix ? `${prefix}${label}` : label.toLowerCase(), label, type: "number", min: 0,
   step: test.startsWith("IELTS") ? 0.5 : 1,
-  ...(test.startsWith("IELTS") ? { max: 9 } : test.startsWith("CELPIP") ? { min: 1, max: 12 } : {}),
+  ...(test.startsWith("IELTS") ? { max: 9 } : test.startsWith("CELPIP") ? { min: 1, max: 12 }
+    : test.startsWith("PTE") ? { min: 10, max: 90 }
+    : test.startsWith("TEF") ? { max: { Reading: 300, Writing: 450, Listening: 360, Speaking: 450 }[label] }
+    : test.startsWith("TCF") ? { max: ["Reading", "Listening"].includes(label) ? 699 : 20 } : {}),
 }));
 
 function getSections(profile) {
@@ -39,8 +42,8 @@ function getSections(profile) {
   const scores = (key, label, prefix, test, extra = {}) => ({ key, label, type: "scores", fields: scoreFields(prefix, test), wide: true, ...extra });
   return [
     [
-      { key: "age", label: "Age", type: "number", min: 17, max: 65, placeholder: "Years" },
-      { key: "dependentChildren", label: "Dependent children", type: "number", min: 0, max: 6, placeholder: "0" },
+      { key: "age", label: "Age", type: "number", min: 17, max: 120, placeholder: "Years" },
+      { key: "dependentChildren", label: "Dependent children", type: "number", min: 0, max: 30, placeholder: "0", hint: "Count each dependent child of you or your partner once, including children not coming to Canada." },
       select("maritalStatus", "Marital status", MARITAL_OPTIONS),
       { key: "citizenship", label: "Country of citizenship", type: "country" },
       ...(partner ? [choice("spouseAccompanying", "Will your partner come with you?", { wide: true })] : []),
@@ -58,7 +61,7 @@ function getSections(profile) {
       ...(profile.firstLangTest && profile.firstLangTest !== "No test yet" ? [scores("englishScores", "Your English scores", "", profile.firstLangTest, { hint: profile.firstLangTest.startsWith("IELTS") ? "IELTS: 0–9, in increments of 0.5." : profile.firstLangTest.startsWith("CELPIP") ? "CELPIP: 1–12 for each skill." : undefined })] : []),
       choice("hasSecondLang", "Have you taken a French test?", { wide: true }),
       ...(profile.hasSecondLang === "Yes" ? [select("secondLangTest", "French test", FRENCH_TESTS, { wide: true })] : []),
-      ...(profile.hasSecondLang === "Yes" && profile.secondLangTest ? [scores("frenchScores", "Your French scores", "fr", profile.secondLangTest)] : []),
+      ...(profile.hasSecondLang === "Yes" && profile.secondLangTest ? [scores("frenchScores", "Your French scores", "fr", profile.secondLangTest, { hint: profile.secondLangTest === "TEF Canada" ? "Use the Équivalence ancien score column on your certificate, not Score / 699." : undefined })] : []),
       ...(spouseTest ? [select("spouseLangTest", "Your partner’s English test", SPOUSE_TESTS, { wide: true })] : []),
       ...(spouseTest && profile.spouseLangTest && profile.spouseLangTest !== "No test" ? [scores("spouseScores", "Your partner’s scores", "spouse", profile.spouseLangTest)] : []),
     ],
@@ -73,7 +76,9 @@ function getSections(profile) {
       ...(profile.inCanada === "Yes" ? [select("currentProvince", "Current province or territory", PROVINCES, { wide: true })] : []),
       choice("siblingInCanada", "Sibling with Canadian citizenship or PR", { wide: true }),
       choice("provincialNomination", "Provincial nomination"),
+      ...(profile.provincialNomination === "Yes" ? [select("nominationType", "Which nomination process?", ["Express Entry", "Non-Express Entry", "Not sure"], { wide: true, hint: "Only a confirmed Express Entry nomination adds CRS points. Check your nomination letter." })] : []),
       choice("hasJobOffer", "Valid Canadian job offer"),
+      ...(profile.hasJobOffer === "Yes" ? [choice("workAuthorizedInCanada", "Are you authorized to work in Canada?", { options: ["Yes", "No", "Not sure"], wide: true })] : []),
       select("provincePreference", "Preferred province or territory", PROVINCE_PREFERENCE, { optional: true, placeholder: "Open to any", wide: true }),
     ],
     [
@@ -226,7 +231,7 @@ export default function AssessmentFlow({ onComplete, onBack, initialProfile }) {
         return;
       }
       setSubmitted(true);
-      onComplete?.(profile);
+      if (onComplete?.(profile) === false) setSubmitted(false);
       return;
     }
     const nextErrors = sectionErrors(sections[step], profile);

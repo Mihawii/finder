@@ -1,132 +1,89 @@
 ---
 name: Project Architecture
-description: Full architecture of PathwayFinder - directory structure, tech stack, data flow, APIs, deployment config
+description: Canadian assessment/report v2 and session-only preparation prototype; shared modules and production boundaries
 type: project
 ---
 
-# PathwayFinder Architecture
+# PathwayFinder architecture
 
-## Directory Structure
-```
-/
-├── index.html                          # HTML entry point
-├── package.json                        # React 18, Vite 6 dependencies
-├── vite.config.js                      # Dev server on port 3000, proxy to Firebase emulator
-├── firebase.json                       # Hosting (dist/), function sources, rewrites
-├── .firebaserc                         # Project: pathwayfinder-3b040
-├── dev.config.js                       # Dev mode: pre-filled form + mock report (335 lines)
-│
-├── CLAUDE.md                           # Agent instructions
-├── CRS_RULES.md                        # CRS formula spec + 3 known bugs
-├── REPORT_RULES.md                     # AI report JSON schema + validation rules
-├── IMMIGRATION_DATA.md                 # Static program rules, costs, provincial structures
-├── IMMIGRATION_DATA_UPDATES.md         # Dynamic draws, CRS cutoffs, program changes (updated daily)
-├── IMMIGRATION_DATA_LOGS.md            # Changelog for immigration data files
-├── SETUP.md                            # Local dev setup guide
-│
-├── src/
-│   ├── main.jsx                        # React root render (10 lines)
-│   └── assessment_flow.jsx             # Form UI components (1,392 lines)
-│
-├── pathwayfinder-app (2).jsx           # MAIN APP FILE (3,746 lines)
-│   ├── CRS calculator engine           #   Lines ~1-800: scoring tables, language converters
-│   ├── Form field components           #   Lines ~800-1500: UI components
-│   ├── AI analysis integration         #   Lines ~1500-2200: API calls, report generation
-│   ├── Report rendering                #   Lines ~2200-3200: report display components
-│   ├── Promo code gate                 #   Lines ~3200-3500: free vs paid logic
-│   └── Main App component              #   Lines ~3500-3746: app orchestration
-│
-├── functions/                          # Node.js Cloud Functions
-│   ├── index.js                        # analyzeProfile + validatePromoCode (326 lines)
-│   ├── package.json                    # Node 20, firebase-functions, @anthropic-ai/sdk
-│   └── .env                            # ANTHROPIC_KEY (secret - not in git)
-│
-├── pdf-function/                       # Python Cloud Function
-│   ├── main.py                         # HTTP handler (45 lines)
-│   ├── generate_report.py              # PDF engine with ReportLab (919 lines)
-│   ├── requirements.txt                # Flask, ReportLab, firebase-functions
-│   └── venv/                           # Python virtualenv (not in git)
-│
-└── dist/                               # Vite build output (deployed to Firebase Hosting)
+Updated 2026-10-11. This describes the current source tree, not a deployment confirmation. Historical `project_state.md` notes predate the shared modules and must not be used to reintroduce already-fixed bugs.
+
+## Product boundary
+
+The core flow remains a Canadian profile assessment and personalized report. A separate partial preparation worksheet supports adult, non-business nominees using the non-Express Entry PNP process. No accounts, database, document uploads, official-form generation or automated submission exist. Both worksheet entry points share one App-level React-memory draft; internal navigation and assessment edits preserve it. Refreshing or closing the tab clears it. Assessment edits do not overwrite confirmed preparation facts. Do not imply that an application has been saved or completed.
+
+## Code ownership
+
+| Location | Responsibility |
+|----------|----------------|
+| `src/main.jsx` | React entry point |
+| `src/country-experience.jsx` | Destination experience and Canada entry; preserve photography/flags |
+| `pathwayfinder-app (2).jsx` | Assessment/results/preparation orchestration, report UI and export requests |
+| `src/assessment_flow.jsx`, `src/assessment-data.js` | Grouped assessment and editable review |
+| `functions/lib/assessment/crs.js` | Pure CRS tables, conversions and calculation |
+| `functions/lib/assessment/profile.js` | Normalized profile with explicit unknowns and nomination type |
+| `functions/lib/assessment/validation.js` | Server/browser contract, raw-score validation and recalculation |
+| `functions/lib/assessment/funds.js` | Source-dated Express Entry funds comparison |
+| `functions/lib/report.js` | Report v2 parser, schema checks, code-owned calculations and metadata |
+| `functions/index.js` | Firebase HTTP endpoints and Anthropic request |
+| `src/preparation-flow.jsx`, `src/styles/preparation.css` | Partial preparation wizard |
+| `functions/lib/preparation/model.js` | Fact sources/confirmation, history rows, gaps and text worksheet |
+| `functions/lib/preparation/registry.js` | Versioned route, official sources, supported scope and incomplete outputs |
+| `pdf-function/main.py`, `generate_report.py` | Informational report PDF service, separate from official immigration forms |
+| `tests/assessment.test.js`, `report.test.js`, `preparation.test.js` | Domain and contract regressions |
+
+Pure shared modules deliberately live under `functions/lib/`: Vite imports them directly and Firebase includes them in the Node function deployment. No copy of scoring logic belongs in the frontend.
+
+## Assessment and report flow
+
+```text
+Grouped questionnaire + review
+  -> mapProfileForCRS(form)
+  -> validateAssessmentProfile(normalized input)
+  -> canonical local breakdown
+  -> analyzeProfile({ profile })
+  -> server validation + raw language-score conversion + CRS/funds calculation
+  -> model-generated explanatory JSON using dated program snapshots
+  -> parseReport / validateReport / finalizeReport
+  -> report v2 + optional informational PDF
 ```
 
-## Data Flow
-```
-1. User fills 6-step assessment form
-   (Personal → Education → Language → Work → Connections → Status)
+The server never trusts client `clb`, `clb2`, `spouseClb` or `breakdown`. Non-Canada input is rejected. Unknown TEER stays null; combined TEER 4/5 stays combined. Only an Express Entry nomination sets the CRS nomination flag. Unknown exemption facts are retained rather than coerced to false.
 
-2. CRS score calculated in-browser (real-time)
-   - Language test scores → CLB conversion (lookup tables)
-   - 8 scoring categories applied
-   - Two-column logic: "single" vs "spouse" (higher/lower point caps)
-   - Skill transferability: education+language, education+Canadian work,
-     foreign work+language, foreign work+Canadian work
-   - Additional points: provincial nomination, Canadian education, sibling, French
+Report v2 permits zero to five pathways and uses `requirements.met: true | false | null`; no approval percentages are generated or displayed. Code determines scores, category losses, conditional language scenarios, funds comparisons, report version and date metadata. The model's program explanations still need verification. See `CRS_RULES.md` and `REPORT_RULES.md` for exact contracts and known scope limits.
 
-3. Promo code gate
-   - Free users: CRS score + basic summary + blurred full report
-   - Code PATHFINDER23: unlocks full report
-   - Validated server-side via POST /api/validatePromoCode
+The promo validation endpoint remains; report access is currently bypassed in the UI for beta testing. Do not assume it implements billing or server authorization.
 
-4. AI report generation
-   - POST to Cloud Function analyzeProfile (or direct Cloud Run URL)
-   - Cloud Function builds prompt from profile + CRS breakdown
-   - Sends to Claude Sonnet with 160+ line system prompt
-   - Claude returns structured JSON (profile, crs_analysis, score_analysis,
-     pathways[5], action_plan, costs, timeline)
-   - 3 retry attempts on 502 errors, 120s timeout
+## Preparation flow
 
-5. Report rendered in browser
-   - Profile summary with strengths/gaps
-   - CRS breakdown with losses & opportunities
-   - 5 ranked immigration pathways (chance 0-100%)
-   - 6+ step action plan with costs & websites
-   - 18-month timeline
-   - Settlement fund requirements
-
-6. Optional PDF download
-   - POST report JSON to Python Cloud Function
-   - ReportLab generates professional A4 PDF
-   - Returns PDF file for download
+```text
+Confirmed route gate
+  -> applicant details
+  -> family notes + address/activity/travel histories
+  -> document reminders
+  -> editable review + fact confirmations + unresolved questions
+  -> downloadable partial text worksheet
 ```
 
-## API Endpoints
-| Endpoint | Method | Function | Runtime |
-|----------|--------|----------|---------|
-| `/api/analyzeProfile` | POST | analyzeProfile | Node.js 20 |
-| `/api/validatePromoCode` | POST | validatePromoCode | Node.js 20 |
-| Cloud Run direct URL | POST | generatePdf | Python 3.12 |
+Assessment-seeded answers retain their source and require confirmation. Do not derive dates of birth from ages or convert unknown dates into guessed values. Editing a fact resets its confirmation. Chronology checks can highlight gaps; they do not establish complete official application coverage. Authenticated portal mappings, full family-member forms, background declarations, signatures, official PDFs and professional review remain unimplemented. The registry exposes these limits explicitly.
 
-## Firebase Config
-- **Hosting:** serves `dist/` folder
-- **Rewrites:** `/api/analyzeProfile` → function, `**` → `/index.html` (SPA)
-- **Functions:** 2 codebases (node-functions, pdf-functions)
-- **Cloud Run direct URL** used for analyzeProfile to bypass Firebase rewrite timeout
+## Program snapshots and sources
 
-## CRS Scoring Categories
-1. Age (max 110 single / 100 spouse)
-2. Education (max 150 single / 140 spouse)
-3. First official language (max 136 single / 128 spouse)
-4. Second official language (max 24 single / 22 spouse)
-5. Canadian work experience (max 80 single / 70 spouse)
-6. Spouse factors (max 40 if applicable)
-7. Skill transferability (max 100)
-8. Additional points (max 600)
-**Total max: 1,200 points**
+- `IMMIGRATION_DATA.md`: dated program rules/costs snapshot.
+- `IMMIGRATION_DATA_UPDATES.md`: dated draws/changes; last fetch recorded as 2026-06-15.
+- `IMMIGRATION_DATA_LOGS.md`: historical snapshot changes.
+- No functioning daily feed is established by these filenames or comments.
+- CRS, language conversion guidance and funds sources were checked separately on 2026-10-11; this did not refresh the draw/program snapshots.
+- Report metadata preserves `dataAsOf`; stale or unknown program data receives `unverified` status.
 
-## Supported Language Tests
-- IELTS General → CLB (score ranges)
-- CELPIP → CLB (whole numbers)
-- PTE Core → CLB (score ranges)
-- TEF Canada → CLB (score ranges)
-- TCF Canada → CLB (score ranges)
-- CLB Direct (no conversion needed)
+## Runtime and deployment
 
-## Version History
-- v1: Initial version
-- v2: Landing page, report page, loading screen, March 2026 data
-- v3: Bug fixes before PDF redesign
-- v4: Working PDF with ReportLab
-- v5: CRS accuracy improvements
-- v5.1: AI settlement funds check
-- v6: Promo code gating (current)
+Frontend: React 18/Vite. Node function: Node 20 and Anthropic model configured in `functions/index.js`. PDF function: Python 3.12/ReportLab. Hosting project: `pathwayfinder-3b040`.
+
+Firebase has `node-functions` (`functions/`) and `pdf-functions` (`pdf-function/`) codebases. The Node predeploy step copies the two source-data files into `functions/`. Hosting serves `dist/` and rewrites `/api/analyzeProfile`; verify environment endpoint configuration and emulator proxy before browser testing. Deploy compatible frontend, Node and PDF contract versions together. Never commit `.env` secrets or log applicant facts/model responses.
+
+Run `npm test`, `npm run typecheck` and `npm run build`; also verify browser flows and render report PDFs when relevant. Keep commits atomic and never force-push main.
+
+## Production preparation gates
+
+A saved application service requires a deliberate architecture revision: authenticated profiles, per-applicant/reviewer authorization, private storage, consent, retention/deletion and audit controls. Before filing-ready claims, complete the route inventory, get professional review, verify authenticated portal coverage and test each official PDF through fill, validation, save and reopen. A successful text export proves none of those capabilities.

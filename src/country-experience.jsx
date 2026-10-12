@@ -4,6 +4,7 @@ import { CustomEase } from "gsap/CustomEase";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { CountryFlag } from "@/components/ui/country-flag";
 import { Brand } from "@/components/ui/brand";
+import { Button } from "@/components/ui/button";
 import { onboardingSlides } from "@/lib/onboarding-slides";
 import "./country-experience.css";
 
@@ -121,7 +122,7 @@ function getInitialCountry() {
   try { return localStorage.getItem("pathway-destination") === "ca" ? "ca" : "us"; } catch { return "us"; }
 }
 
-export default function CountryExperience({ onStartCanada }) {
+export default function CountryExperience({ onStartCanada, onOpenPreparation }) {
   const [country, setCountry] = useState(getInitialCountry);
   const [arriving, setArriving] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -295,6 +296,7 @@ export default function CountryExperience({ onStartCanada }) {
           {destination.options.map((option, index) => <button className="country-pathway" key={option.id} data-scroll-reveal onClick={() => start()}><span className="pathway-number">0{index + 1}</span><span className="pathway-title">{option.title}</span><span className="pathway-subtitle">{option.subtitle}</span><span className="pathway-arrow"><Arrow diagonal/></span></button>)}
         </div>
         <div className="pathway-footnote" data-scroll-reveal><span className="country-dot"/><span>{country === "ca" ? "Your profile. Your CRS score. A clearer starting point." : "Personalized assessments are currently available for Canada."}</span></div>
+        {country === "ca" && <div className="preparation-entry" data-scroll-reveal><p>Already have a non-Express Entry provincial nomination? Try the partial preparation worksheet.</p><Button variant="secondary" onClick={onOpenPreparation}>Open preparation worksheet <Arrow /></Button></div>}
       </section>
 
       <section id="country-process" className="process-section section-shell">
@@ -307,7 +309,7 @@ export default function CountryExperience({ onStartCanada }) {
           ] : [
             ["Tell your story.", "A guided profile covering your education, language skills, experience, and connections."],
             ["See where you stand.", "Get your calculated CRS score and understand the factors that shape it."],
-            ["Explore your next move.", "Use your assessment to explore potential pathways and prepare your next steps."],
+            ["Prepare your next steps.", "Review your options. Already nominated? Explore our partial worksheet for the non-Express Entry PNP process."],
           ]).map(([title, body], index) => <article key={title} data-scroll-reveal><span className="step-number">0{index + 1}</span><div><h3>{title}</h3><p>{body}</p></div></article>)}
         </div>
       </section>

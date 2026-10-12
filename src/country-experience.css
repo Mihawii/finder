@@ -223,3 +223,5 @@ body[data-menu-status='open'] .country-header { position: fixed; }
   .hero-parallax-layer, .other-destination-image { will-change: auto; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+.preparation-entry { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin-top: 24px; padding-top: 24px; border-top: 1px solid #ffffff20; }
+.preparation-entry p { max-width: 460px; font-size: 13px; line-height: 1.7; color: #c2c5bd; }

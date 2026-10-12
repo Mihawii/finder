@@ -4,6 +4,9 @@ Builds PDF from structured report JSON data - no html2canvas, no screenshots.
 """
 
 import json
+import math
+import re
+from xml.sax.saxutils import escape
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.lib.colors import HexColor, white, black
@@ -15,6 +18,17 @@ from reportlab.platypus import (
 )
 from reportlab.platypus.flowables import Flowable
 from reportlab.lib import colors
+
+def requirement_state(pathway):
+    requirements = pathway.get('requirements', [])
+    if not requirements:
+        return 'Needs review'
+    if any(item.get('met') is False for item in requirements):
+        return 'Gaps identified'
+    if any(item.get('met') is not True for item in requirements):
+        return 'Missing information'
+    return 'Review requirements'
+
 
 # ============================================================
 # COLORS
@@ -244,12 +258,9 @@ def add_page_furniture(canvas, doc):
     # Footer on every page
     canvas.setFont("Helvetica", 7)
     canvas.setFillColor(LIGHT_TEXT)
-    # Use the AI's dataDisclaimer (stashed on doc) when present; else the original hardcoded date.
-    footer_date = getattr(doc, "_data_disclaimer", None) or "Data valid as of March 2026"
-    # Footer is a single narrow line — keep only the short date portion, dropping the
-    # "— verify current program details…" clause (it remains in the end-of-report disclaimer).
-    footer_date = footer_date.split(" — verify")[0].strip()
-    footer_text = f"Page {doc.page} — {footer_date} — Not immigration advice"
+    data_as_of = getattr(doc, "_data_as_of", None)
+    footer_date = f"Program snapshot: {data_as_of}" if data_as_of else "Program snapshot date unavailable"
+    footer_text = f"Page {doc.page} - {footer_date} - Not immigration advice"
     canvas.drawCentredString(page_w / 2, 8*mm, footer_text)
     canvas.restoreState()
 
@@ -271,6 +282,8 @@ def build_report(data, output_path):
 
     # Expose the AI's dataDisclaimer to the page-footer callback (read in add_page_furniture).
     doc._data_disclaimer = data.get('dataDisclaimer')
+    snapshot_date = data.get('assessment', {}).get('dataAsOf')
+    doc._data_as_of = snapshot_date if isinstance(snapshot_date, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", snapshot_date) else None
 
     story = []
 
@@ -286,21 +299,19 @@ def build_report(data, output_path):
     # Summary cards as a table
     crs_score = data.get('crs', {}).get('total', '—')
     best_pathway = data.get('pathways', [{}])[0].get('name', '—') if data.get('pathways') else '—'
-    top_match = data.get('pathways', [{}])[0].get('chance', '—') if data.get('pathways') else '—'
-    if isinstance(top_match, (int, float)):
-        top_match = f"{top_match}%"
+    top_match = requirement_state(data['pathways'][0]) if data.get('pathways') else 'Needs review'
     key_insight = data.get('crs', {}).get('keyInsight', '')
     projected = data.get('scoreAnalysis', {}).get('projectedScore', '')
 
+    summary_widths = [content_w * part for part in (0.18, 0.28, 0.22, 0.32)]
     summary_data = [[
-        make_summary_card("CRS Score", crs_score, 105, value_size=22),
-        make_summary_card("Best Pathway", best_pathway, 145, value_size=14),
-        make_summary_card("Top Match", top_match, 90, value_color=MID_GREEN, value_size=22),
-        make_summary_card("Key Insight", key_insight,
-                   155, value_color=BODY_TEXT, value_size=9),
+        make_summary_card("CRS Score", crs_score, summary_widths[0] - 4, value_size=22),
+        make_summary_card("Best Pathway", best_pathway, summary_widths[1] - 4, value_size=14),
+        make_summary_card("Requirements", top_match, summary_widths[2] - 4, value_color=BODY_TEXT, value_size=11),
+        make_summary_card("Key Insight", key_insight, summary_widths[3] - 4, value_color=BODY_TEXT, value_size=9),
     ]]
 
-    summary_table = Table(summary_data, colWidths=[110, 150, 95, 160])
+    summary_table = Table(summary_data, colWidths=summary_widths)
     summary_table.setStyle(TableStyle([
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 2),
@@ -338,7 +349,7 @@ def build_report(data, output_path):
         ]
         for i in range(max_rows):
             s_text = f"✓  {strengths[i]}" if i < len(strengths) else ""
-            g_text = f"⚠  {gaps[i]}" if i < len(gaps) else ""
+            g_text = f"Review: {gaps[i]}" if i < len(gaps) else ""
             sg_data.append([
                 Paragraph(s_text, styles['check_green']),
                 Paragraph(g_text, styles['gap_item']),
@@ -359,12 +370,55 @@ def build_report(data, output_path):
         ]))
         story.append(KeepTogether([sg_table]))
 
+    funds = data.get('assessment', {}).get('funds')
+    if isinstance(funds, dict):
+        def money(value):
+            if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
+                return 'Needs clarification'
+            return f"${value:,.2f} CAD" if value % 1 else f"${value:,.0f} CAD"
+
+        status = {
+            'sufficient': 'Stated amount meets this minimum',
+            'insufficient': 'Stated amount is below this minimum',
+            'exempt': 'CEC exemption' if funds.get('exemption') == 'cec' else 'Potential exemption: valid offer and work authorization reported',
+            'unknown': 'More information needed',
+        }.get(funds.get('status'), 'More information needed')
+        rows = [
+            ('Family members counted', funds.get('familySize') if funds.get('familySize') is not None else 'Needs clarification'),
+            ('Stated funds', money(funds.get('available'))),
+            ('Published minimum', money(funds.get('required'))),
+            ('Comparison', status),
+        ]
+        funds_table = Table([
+            [Paragraph(escape(str(label)), styles['small']), Paragraph(escape(str(value)), styles['body'])]
+            for label, value in rows
+        ], colWidths=[content_w * 0.40, content_w * 0.60])
+        funds_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), CREAM),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        source = funds.get('sourceUrl', '')
+        verified = funds.get('verifiedAt') or 'date unavailable'
+        funds_block = [
+            Spacer(1, 12),
+            Paragraph('Settlement Funds Check', styles['h3']),
+            Paragraph('Preliminary Express Entry FSW/FST comparison. Canadian Experience Class is exempt; provincial programs can have different rules.', styles['small']),
+            Spacer(1, 4), funds_table, Spacer(1, 4),
+            Paragraph('Includes non-accompanying family. Amounts are self-reported; access to funds and supporting evidence still need verification.', styles['small']),
+            Paragraph(f"IRCC source checked {escape(str(verified))}: {escape(str(source))}", styles['small']),
+        ]
+        story.append(KeepTogether(funds_block))
+
     # ---- PAGE 2: CRS SCORE ANALYSIS ----
     story.append(PageBreak())
     story.append(Paragraph("CRS Score Analysis", styles['h2']))
     story.append(Paragraph(
-        "Where your score comes from, how competitive it looks, and which "
-        "draw categories are closer to your current profile.", styles['body']))
+        "Where your calculated points come from. Program eligibility and competitiveness "
+        "require separate checks against current requirements and relevant invitation rounds.", styles['body']))
     story.append(Spacer(1, 8))
 
     # Score display — use a dedicated style with correct leading
@@ -377,7 +431,7 @@ def build_report(data, output_path):
 
     # Breakdown bars
     story.append(Paragraph("BREAKDOWN", styles['label']))
-    breakdown_items = data.get('_breakdown', {})
+    breakdown_items = data.get('assessment', {}).get('breakdown') or data.get('_breakdown', {})
     breakdown_config = [
         ("Age", breakdown_items.get('age', 0), 110),
         ("Education", breakdown_items.get('education', 0), 150),
@@ -406,31 +460,7 @@ def build_report(data, output_path):
 
     story.append(Spacer(1, 14))
 
-    # Draw comparison
-    story.append(Paragraph("DRAW COMPARISON", styles['label']))
-    cutoffs = [
-        ("CEC", 507, 511), ("French", 393, 400), ("Healthcare", 467, 467),
-        ("Senior Mgrs", 429, 429), ("PNP", 710, 789), ("Trade", 350, 400),
-    ]
-    score_num = int(crs_score) if str(crs_score).isdigit() else 0
-
-    for name, cmin, cmax in cutoffs:
-        above = score_num >= cmin
-        bar_color = LIGHT_GREEN if above else HexColor("#E8A87C")
-        row_data = [[
-            Paragraph(name, styles['body']),
-            HorizontalBar(score_num, 800, width=260, height=10,
-                         fill_color=bar_color, label_right=""),
-            Paragraph(f"{cmin}-{cmax}", ParagraphStyle('', fontName='Helvetica',
-                fontSize=9, textColor=LIGHT_TEXT, alignment=TA_RIGHT)),
-        ]]
-        row_table = Table(row_data, colWidths=[90, 300, 70])
-        row_table.setStyle(TableStyle([
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 0),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
-        ]))
-        story.append(row_table)
+    story.append(Paragraph('CRS is a ranking score, not an approval probability. No live draw comparison is included in this report.', styles['small']))
 
     # ---- PAGE 3: WHERE YOU'RE LOSING POINTS ----
     story.append(PageBreak())
@@ -452,7 +482,7 @@ def build_report(data, output_path):
         loss_rows = [loss_header]
         for loss in losses:
             fixable = loss.get('fixable', True)
-            status_text = "Improvable" if fixable else "Can't change"
+            status_text = "Improvable" if fixable else "Not modeled"
             status_style = ParagraphStyle('', fontName='Helvetica-Bold', fontSize=8,
                 textColor=MID_GREEN if fixable else CORAL)
 
@@ -479,9 +509,9 @@ def build_report(data, output_path):
 
     # ---- OPPORTUNITIES ----
     story.append(Spacer(1, 16))
-    story.append(Paragraph("How to Gain Points", styles['h2']))
+    story.append(Paragraph("Conditional Score Scenarios", styles['h2']))
     story.append(Paragraph(
-        "The highest-value improvements based on your current profile.", styles['body']))
+        "Examples calculated with your other answers unchanged. These are not predictions or spending recommendations.", styles['body']))
     story.append(Spacer(1, 8))
 
     opportunities = data.get('scoreAnalysis', {}).get('opportunities', [])
@@ -506,51 +536,35 @@ def build_report(data, output_path):
             detail_parts.append(f"Estimated cost: <b>{opp['cost']}</b>")
         if detail_parts:
             opp_content.append(Paragraph("  |  ".join(detail_parts), styles['small']))
+        if opp.get('explanation'):
+            opp_content.append(Paragraph(opp['explanation'], styles['small']))
 
         opp_block = KeepTogether(opp_content + [Spacer(1, 4),
             HRFlowable(width="100%", thickness=0.5, color=BORDER, spaceAfter=6)])
         story.append(opp_block)
 
-    # Projected score banner
-    proj_text = data.get('scoreAnalysis', {}).get('projectedScore', '')
-    proj_current = str(crs_score)
-    proj_target = ''
-
-    if isinstance(proj_text, str) and '→' in proj_text:
-        parts = proj_text.split('→')
-        # Get current from left side - last number
-        left_nums = [s for s in parts[0].strip().split() if s.isdigit()]
-        if left_nums:
-            proj_current = left_nums[-1]
-        # Get target from right side - first number only (before any dash or comma)
-        right = parts[1].strip()
-        target_num = ''
-        for ch in right:
-            if ch.isdigit():
-                target_num += ch
-            elif target_num:
-                break  # stop at first non-digit after we started collecting
-        proj_target = target_num if target_num else ''
-
-    if not proj_target:
-        # Fallback: add 30 to current score
-        try:
-            proj_target = str(int(proj_current) + 30)
-        except:
-            proj_target = '—'
-
-    # Determine which cutoffs the projected score crosses
-    proj_num = int(proj_target) if proj_target.isdigit() else 0
-    crossed = [name for name, cmin, cmax in cutoffs if proj_num >= cmin]
-
-    banner = ProjectedScoreBanner(
-        proj_current, proj_target,
-        f"Your score could reach {proj_target} with the improvements above.",
-        [f"Crosses {c} range" for c in crossed],
-        width=int(content_w)
-    )
-    story.append(Spacer(1, 10))
-    story.append(banner)
+    # Use the code-owned combined result. Never infer it from narrative or add
+    # individual gains: the calculation contains interacting factors and caps.
+    scenario = data.get('scoreAnalysis', {})
+    target = scenario.get('projectedTotal')
+    if isinstance(target, (int, float)) and not isinstance(target, bool) and math.isfinite(target):
+        scenario_text = scenario.get('projectedScore') or 'Conditional calculation; assumptions need review.'
+        scenario_style = ParagraphStyle('ScenarioText', parent=styles['body'], textColor=WHITE, leading=14)
+        scenario_table = Table([
+            [Paragraph('COMBINED LANGUAGE SCENARIO', ParagraphStyle('ScenarioLabel', parent=styles['label'], textColor=WHITE))],
+            [Paragraph(f"{escape(str(crs_score))} to {escape(str(target))}", ParagraphStyle('ScenarioScore', parent=styles['medium_number'], textColor=WHITE))],
+            [Paragraph(escape(scenario_text), scenario_style)],
+        ], colWidths=[content_w])
+        scenario_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), DARK_GREEN),
+            ('LEFTPADDING', (0, 0), (-1, -1), 12),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+            ('TOPPADDING', (0, 0), (-1, -1), 5),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ]))
+        story.append(Spacer(1, 10))
+        story.append(KeepTogether(scenario_table))
 
     # ---- PATHWAYS ----
     story.append(PageBreak())
@@ -562,15 +576,16 @@ def build_report(data, output_path):
 
     pathways = sorted(data.get('pathways', []), key=lambda p: p.get('rank', 99))
 
+    if not pathways:
+        story.append(Paragraph('No supported pathway was identified from the supplied information. Review missing facts and current official requirements before choosing a route.', styles['body']))
+
     for pw in pathways[:5]:
         pw_content = []
 
-        # Header: #rank  Name  Match%
+        # Header: rank, program and preliminary requirement state
         rank = pw.get('rank', '?')
         name = pw.get('name', 'Unknown')
-        chance = pw.get('chance', '—')
-        if isinstance(chance, (int, float)):
-            chance = f"{chance}%"
+        requirements_label = requirement_state(pw)
         stream = pw.get('stream', '')
         status = pw.get('status', 'active')
         timeline = pw.get('timeline', '')
@@ -581,8 +596,7 @@ def build_report(data, output_path):
                 ParagraphStyle('', alignment=TA_CENTER, fontSize=10)),
             Paragraph(f"<b>{name}</b><br/><font size=8 color='#666666'>{stream}</font>",
                 styles['body_bold']),
-            Paragraph(f"<font size=22 color='#2D6A4F'><b>{chance}</b></font>",
-                ParagraphStyle('', alignment=TA_RIGHT, fontSize=22)),
+            Paragraph(requirements_label, ParagraphStyle('', alignment=TA_RIGHT, fontSize=10, leading=13)),
         ]]
         header_table = Table(header_data, colWidths=[35, content_w - 120, 85])
         header_table.setStyle(TableStyle([
@@ -618,15 +632,15 @@ def build_report(data, output_path):
         if reqs:
             pw_content.append(Spacer(1, 4))
             for req in reqs:
-                met = req.get('met', False)
-                icon = "✓" if met else "✗"
-                color = "#236344" if met else "#C0392B"
+                met = req.get('met')
+                icon = "Met" if met is True else "Gap" if met is False else "Check"
+                color = "#236344" if met is True else "#C0392B" if met is False else "#7A5B1F"
                 pw_content.append(Paragraph(
                     f"<font color='{color}'><b>{icon}</b></font>  {req.get('item', '')}",
                     styles['body']))
 
         # Details (if present)
-        details = pw.get('details', {})
+        details = pw.get('details') or {}
         if details.get('description'):
             pw_content.append(Spacer(1, 4))
             pw_content.append(Paragraph("DESCRIPTION", styles['label']))
@@ -756,7 +770,7 @@ def build_report(data, output_path):
     story.append(Spacer(1, 20))
     story.append(HRFlowable(width="100%", thickness=0.5, color=AMBER, spaceAfter=8))
     disclaimer_date = data.get('dataDisclaimer') or \
-        "Data valid as of March 24, 2026 — verify current program details on official sites."
+        "The program snapshot date is unavailable. Verify current requirements on official sources."
     story.append(Paragraph(
         f"{disclaimer_date} "
         "This report is for informational purposes only and is not legal or immigration advice. "

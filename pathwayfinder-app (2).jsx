@@ -2,6 +2,12 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import DEV_CONFIG from "./dev.config.js";
 import AssessmentFlow, { AssessmentReportPending, AssessmentReportError } from "./src/assessment_flow.jsx";
 import CountryExperience from "./src/country-experience.jsx";
+import PreparationFlow from "./src/preparation-flow.jsx";
+import { Button } from "./components/ui/button";
+import { calcCRS, convertToClb } from "./functions/lib/assessment/crs.js";
+import { mapProfileForCRS } from "./functions/lib/assessment/profile.js";
+import { validateAssessmentProfile } from "./functions/lib/assessment/validation.js";
+import { parseReport, finalizeReport, requirementState, scoreCategories } from "./functions/lib/report.js";
 
 function useWindowWidth() {
   const [width, setWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1024);
@@ -37,253 +43,15 @@ function DisclaimerModal({ onAccept, onDecline }) {
 }
 
 // ============================================================
-// DATA LAYER
-// ============================================================
-
-const SETTLEMENT_FUNDS = [
-  { family_size: 1, amount: 15263 }, { family_size: 2, amount: 19001 },
-  { family_size: 3, amount: 23360 }, { family_size: 4, amount: 28362 },
-  { family_size: 5, amount: 32168 }, { family_size: 6, amount: 36280 },
-  { family_size: 7, amount: 40392 },
-];
-
-const CRS_AGE = [
-  [17,0,0],[18,99,90],[19,105,95],[20,110,100],[21,110,100],[22,110,100],[23,110,100],
-  [24,110,100],[25,110,100],[26,110,100],[27,110,100],[28,110,100],[29,110,100],
-  [30,105,95],[31,99,90],[32,94,85],[33,88,80],[34,83,75],[35,77,70],[36,72,65],
-  [37,66,60],[38,61,55],[39,55,50],[40,50,45],[41,39,35],[42,28,25],[43,17,15],[44,6,5],
-];
-
-const CRS_EDUCATION = [
-  { level: "phd", label: "PhD", single: 150, spouse: 140 },
-  { level: "masters", label: "Master's / professional degree", single: 135, spouse: 126 },
-  { level: "two_plus", label: "Two or more credentials (one 3+ yr)", single: 128, spouse: 119 },
-  { level: "bachelors", label: "Bachelor's degree (3+ yr)", single: 120, spouse: 112 },
-  { level: "two_year", label: "2-year post-secondary", single: 98, spouse: 91 },
-  { level: "one_year", label: "1-year post-secondary", single: 90, spouse: 84 },
-  { level: "high_school", label: "High school diploma", single: 30, spouse: 28 },
-  { level: "below_hs", label: "Less than high school", single: 0, spouse: 0 },
-];
-
-const CRS_FIRST_LANG = [
-  { clb: 10, single: 34, spouse: 32 }, { clb: 9, single: 31, spouse: 29 },
-  { clb: 8, single: 23, spouse: 22 }, { clb: 7, single: 17, spouse: 16 },
-  { clb: 6, single: 9, spouse: 8 }, { clb: 5, single: 6, spouse: 6 },
-  { clb: 4, single: 0, spouse: 0 },
-];
-
-const CRS_SECOND_LANG = [
-  { clb: 9, single: 6, spouse: 6 }, { clb: 8, single: 3, spouse: 3 },
-  { clb: 7, single: 3, spouse: 3 }, { clb: 6, single: 1, spouse: 1 },
-  { clb: 5, single: 1, spouse: 1 }, { clb: 4, single: 0, spouse: 0 },
-];
-
-const CRS_CAN_WORK = [
-  { years: 5, single: 80, spouse: 70 }, { years: 4, single: 72, spouse: 64 },
-  { years: 3, single: 64, spouse: 56 }, { years: 2, single: 53, spouse: 46 },
-  { years: 1, single: 40, spouse: 35 }, { years: 0, single: 0, spouse: 0 },
-];
-
-const SPOUSE_EDU = [
-  { level: "phd", pts: 10 }, { level: "masters", pts: 10 },
-  { level: "two_plus", pts: 9 }, { level: "bachelors", pts: 8 },
-  { level: "two_year", pts: 7 }, { level: "one_year", pts: 6 },
-  { level: "high_school", pts: 2 }, { level: "below_hs", pts: 0 },
-];
-
-const SPOUSE_LANG = [
-  { clb: 9, pts: 5 }, { clb: 8, pts: 3 }, { clb: 7, pts: 3 },
-  { clb: 6, pts: 1 }, { clb: 5, pts: 1 }, { clb: 4, pts: 0 },
-];
-
-const SPOUSE_CAN_WORK = [
-  { years: 5, pts: 10 }, { years: 4, pts: 10 }, { years: 3, pts: 9 },
-  { years: 2, pts: 8 }, { years: 1, pts: 5 }, { years: 0, pts: 0 },
-];
-
-const IELTS_TO_CLB = [
-  { clb: 10, r: 8.0, w: 7.5, l: 8.5, s: 7.5 },
-  { clb: 9, r: 7.0, w: 7.0, l: 8.0, s: 7.0 },
-  { clb: 8, r: 6.5, w: 6.5, l: 7.5, s: 6.5 },
-  { clb: 7, r: 6.0, w: 6.0, l: 6.0, s: 6.0 },
-  { clb: 6, r: 5.0, w: 5.5, l: 5.5, s: 5.5 },
-  { clb: 5, r: 4.0, w: 5.0, l: 5.0, s: 5.0 },
-  { clb: 4, r: 3.5, w: 4.0, l: 4.5, s: 4.0 },
-];
-
-const PTE_TO_CLB = [
-  { clb: 10, r: 88, w: 90, l: 89, s: 89 },
-  { clb: 9, r: 78, w: 88, l: 82, s: 84 },
-  { clb: 8, r: 69, w: 79, l: 71, s: 76 },
-  { clb: 7, r: 60, w: 69, l: 60, s: 68 },
-  { clb: 6, r: 51, w: 60, l: 50, s: 59 },
-  { clb: 5, r: 42, w: 51, l: 39, s: 51 },
-  { clb: 4, r: 33, w: 41, l: 28, s: 42 },
-];
-
-const TEF_TO_CLB = [
-  { clb: 10, r: 263, w: 393, l: 316, s: 393 },
-  { clb: 9, r: 248, w: 371, l: 298, s: 371 },
-  { clb: 8, r: 233, w: 349, l: 280, s: 349 },
-  { clb: 7, r: 207, w: 310, l: 249, s: 310 },
-  { clb: 6, r: 181, w: 271, l: 217, s: 271 },
-  { clb: 5, r: 151, w: 226, l: 181, s: 226 },
-  { clb: 4, r: 121, w: 181, l: 145, s: 181 },
-];
-
-const TCF_TO_CLB = [
-  { clb: 10, r: 549, w: 16, l: 549, s: 16 },
-  { clb: 9, r: 524, w: 14, l: 523, s: 14 },
-  { clb: 8, r: 499, w: 12, l: 503, s: 12 },
-  { clb: 7, r: 453, w: 10, l: 458, s: 10 },
-  { clb: 6, r: 406, w: 7, l: 398, s: 7 },
-  { clb: 5, r: 375, w: 6, l: 369, s: 6 },
-  { clb: 4, r: 342, w: 4, l: 331, s: 4 },
-];
-
-// ============================================================
-// LANGUAGE CONVERSION
-// ============================================================
-
-function tableToClb(table, score, ability) {
-  const s = parseFloat(score);
-  if (isNaN(s)) return 0;
-  const key = ability === "reading" ? "r" : ability === "writing" ? "w" : ability === "listening" ? "l" : "s";
-  for (const row of table) { if (s >= row[key]) return row.clb; }
-  return 3;
-}
-
-function celpipToClb(score) {
-  const s = parseFloat(score);
-  if (isNaN(s)) return 0;
-  if (s >= 10) return 10;
-  return s >= 4 ? Math.floor(s) : 3;
-}
-
-function convertToClb(test, scores) {
-  if (test === "clb_direct") return { reading: parseInt(scores.reading) || 0, writing: parseInt(scores.writing) || 0, listening: parseInt(scores.listening) || 0, speaking: parseInt(scores.speaking) || 0 };
-  if (test === "ielts") return { reading: tableToClb(IELTS_TO_CLB, scores.reading, "reading"), writing: tableToClb(IELTS_TO_CLB, scores.writing, "writing"), listening: tableToClb(IELTS_TO_CLB, scores.listening, "listening"), speaking: tableToClb(IELTS_TO_CLB, scores.speaking, "speaking") };
-  if (test === "celpip") return { reading: celpipToClb(scores.reading), writing: celpipToClb(scores.writing), listening: celpipToClb(scores.listening), speaking: celpipToClb(scores.speaking) };
-  if (test === "pte") return { reading: tableToClb(PTE_TO_CLB, scores.reading, "reading"), writing: tableToClb(PTE_TO_CLB, scores.writing, "writing"), listening: tableToClb(PTE_TO_CLB, scores.listening, "listening"), speaking: tableToClb(PTE_TO_CLB, scores.speaking, "speaking") };
-  if (test === "tef") return { reading: tableToClb(TEF_TO_CLB, scores.reading, "reading"), writing: tableToClb(TEF_TO_CLB, scores.writing, "writing"), listening: tableToClb(TEF_TO_CLB, scores.listening, "listening"), speaking: tableToClb(TEF_TO_CLB, scores.speaking, "speaking") };
-  if (test === "tcf") return { reading: tableToClb(TCF_TO_CLB, scores.reading, "reading"), writing: tableToClb(TCF_TO_CLB, scores.writing, "writing"), listening: tableToClb(TCF_TO_CLB, scores.listening, "listening"), speaking: tableToClb(TCF_TO_CLB, scores.speaking, "speaking") };
-  return { reading: 0, writing: 0, listening: 0, speaking: 0 };
-}
-
-// ============================================================
-// CRS CALCULATOR ENGINE
-// ============================================================
-
-function calcCRS(profile) {
-  const hasPartner = profile.maritalStatus === "married" || profile.maritalStatus === "common_law";
-  const useSpouseColumn = hasPartner && profile.spouseAccompanying && !profile.spouseIsCitizenPR;
-  const col = useSpouseColumn ? "spouse" : "single";
-  const breakdown = {};
-  const age = parseInt(profile.age) || 0;
-  if (age >= 45 || age <= 17) breakdown.age = 0;
-  else { const row = CRS_AGE.find(r => r[0] === age); breakdown.age = row ? row[col === "single" ? 1 : 2] : 0; }
-
-  const eduRow = CRS_EDUCATION.find(e => e.level === profile.education);
-  breakdown.education = eduRow ? eduRow[col] : 0;
-
-  const clbScores = profile.clb || { reading: 0, writing: 0, listening: 0, speaking: 0 };
-  let langPts = 0;
-  ["reading", "writing", "listening", "speaking"].forEach(ab => {
-    const clb = clbScores[ab] || 0;
-    const row = CRS_FIRST_LANG.find(r => clb >= r.clb) || { [col]: 0 };
-    langPts += row[col] || 0;
-  });
-  breakdown.firstLanguage = langPts;
-
-  let lang2Pts = 0;
-  if (profile.hasSecondLang && profile.clb2) {
-    ["reading", "writing", "listening", "speaking"].forEach(ab => {
-      const clb = profile.clb2[ab] || 0;
-      const row = CRS_SECOND_LANG.find(r => clb >= r.clb) || { [col]: 0 };
-      lang2Pts += row[col] || 0;
-    });
-  }
-  breakdown.secondLanguage = Math.min(lang2Pts, col === "spouse" ? 22 : 24);
-
-  const canYears = parseInt(profile.canadianWorkYears) || 0;
-  const canRow = CRS_CAN_WORK.find(r => canYears >= r.years) || { [col]: 0 };
-  breakdown.canadianWork = canRow[col] || 0;
-
-  let spousePts = 0;
-  if (useSpouseColumn) {
-    const spEduRow = SPOUSE_EDU.find(e => e.level === profile.spouseEducation);
-    let spLang = 0;
-    if (profile.spouseClb) { ["reading", "writing", "listening", "speaking"].forEach(ab => { const clb = profile.spouseClb[ab] || 0; const row = SPOUSE_LANG.find(r => clb >= r.clb) || { pts: 0 }; spLang += row.pts; }); }
-    const spCanYears = parseInt(profile.spouseCanadianWorkYears) || 0;
-    const spCanRow = SPOUSE_CAN_WORK.find(r => spCanYears >= r.years) || { pts: 0 };
-    spousePts = (spEduRow ? spEduRow.pts : 0) + spLang + spCanRow.pts;
-  }
-  breakdown.spouse = spousePts;
-
-  const minClb = Math.min(clbScores.reading || 0, clbScores.writing || 0, clbScores.listening || 0, clbScores.speaking || 0);
-  const eduLevel = profile.education;
-  const isP2 = ["phd", "masters", "two_plus", "bachelors", "two_year"].includes(eduLevel);
-  const isP1 = eduLevel === "one_year";
-  let elp = isP2 && minClb >= 9 ? 50 : isP2 && minClb >= 7 ? 25 : isP1 && minClb >= 9 ? 25 : isP1 && minClb >= 7 ? 13 : 0;
-  let ecp = isP2 && canYears >= 2 ? 50 : isP2 && canYears >= 1 ? 25 : isP1 && canYears >= 2 ? 25 : isP1 && canYears >= 1 ? 13 : 0;
-  const fy = parseInt(profile.foreignWorkYears) || 0;
-  let fwlp = fy >= 3 && minClb >= 9 ? 50 : fy >= 3 && minClb >= 7 ? 25 : fy >= 1 && minClb >= 9 ? 25 : fy >= 1 && minClb >= 7 ? 13 : 0;
-  let fwcp = fy >= 3 && canYears >= 2 ? 50 : fy >= 3 && canYears >= 1 ? 25 : fy >= 1 && canYears >= 2 ? 25 : fy >= 1 && canYears >= 1 ? 13 : 0;
-  breakdown.skillTransfer = Math.min(Math.min(elp, 50) + Math.min(ecp, 50) + Math.min(fwlp, 50) + Math.min(fwcp, 50), 100);
-
-  let addPts = 0;
-  if (profile.provincialNomination) addPts += 600;
-  if (profile.canadianEducationYears >= 3) addPts += 30; else if (profile.canadianEducationYears >= 1) addPts += 15;
-  if (profile.siblingInCanada) addPts += 15;
-  if (profile.hasSecondLang && profile.clb2) {
-    const frMin = Math.min(profile.clb2.reading || 0, profile.clb2.writing || 0, profile.clb2.listening || 0, profile.clb2.speaking || 0);
-    if (frMin >= 7 && minClb >= 5) addPts += 50; else if (frMin >= 7) addPts += 25;
-  }
-  breakdown.additional = Math.min(addPts, 600);
-
-  breakdown.total = breakdown.age + breakdown.education + breakdown.firstLanguage + breakdown.secondLanguage + breakdown.canadianWork + breakdown.spouse + breakdown.skillTransfer + breakdown.additional;
-  return breakdown;
-}
-
-// ============================================================
-// FORM COMPONENTS
-// ============================================================
-
-const STEPS = [
-  { id: "personal", label: "Personal", icon: "👤" },
-  { id: "education", label: "Education", icon: "🎓" },
-  { id: "language", label: "Language", icon: "💬" },
-  { id: "work", label: "Work", icon: "💼" },
-  { id: "connections", label: "Ties", icon: "🔗" },
-  { id: "status", label: "Status", icon: "📋" },
-];
-
-const initialProfile = {
-  age: "", maritalStatus: "single", spouseAccompanying: false, spouseIsCitizenPR: false, dependentChildren: 0, citizenship: "", currentCountry: "",
-  education: "", fieldOfStudy: "", educationCountry: "", canadianCredential: false, ecaObtained: false,
-  firstLangTest: "ielts", firstLangScores: { reading: "", writing: "", listening: "", speaking: "" },
-  hasSecondLang: false, secondLangTest: "tef", secondLangScores: { reading: "", writing: "", listening: "", speaking: "" },
-  foreignWorkYears: "", canadianWorkYears: "", primaryNoc: "", nocTeer: "",
-  inCanada: false, currentProvince: "", currentWorkPermitType: "", monthsWithEmployer: "",
-  siblingInCanada: false, previousCanadianEducation: false, canadianEducationYears: 0,
-  previousCanadianWork: false, provincePreference: "", settlementFunds: "", provincialNomination: false,
-  hasJobOffer: false, spouseEducation: "below_hs",
-  spouseClbScores: { reading: "", writing: "", listening: "", speaking: "" },
-  spouseCanadianWorkYears: "0", spouseLangTest: "ielts",
-  previousRefusals: false, criminalHistory: false, medicalConditions: false, quebecIntent: false,
-  openToStudy: false, openToAnyProvince: false,
-};
-// (Old form components removed — see git history for StepPersonal, StepEducation, etc.)
-
-// ============================================================
 // AI ADVISORY LAYER
 // ============================================================
 
 // Direct Cloud Run URL — bypasses Firebase Hosting rewrite to avoid proxy timeouts
-const ANALYZE_FUNCTION_URL = "https://analyzeprofile-vxgeluq7dq-uc.a.run.app";
+const ANALYZE_FUNCTION_URL = import.meta.env.VITE_ANALYZE_PROFILE_URL || "https://analyzeprofile-vxgeluq7dq-uc.a.run.app";
 
 async function callAI(profile, breakdown, onRetry) {
   const MAX_RETRIES = 3;
+  // Retain breakdown for old deployments during rollout; the v2 server ignores it.
   const body = JSON.stringify({ profile, breakdown });
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     const response = await fetch(ANALYZE_FUNCTION_URL, {
@@ -298,17 +66,10 @@ async function callAI(profile, breakdown, onRetry) {
     }
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
-      throw new Error(err.message || `Server error ${response.status}`);
+      throw new Error(err.error || err.message || `Server error ${response.status}`);
     }
     const data = await response.json();
-    console.log("[PathwayFinder] callAI response — has raw:", !!data.raw, "type of data:", typeof data, "keys:", typeof data === "object" ? Object.keys(data).slice(0, 5) : "N/A");
-    if (data.raw) {
-      console.log("[PathwayFinder] returning data.raw, type:", typeof data.raw, "first 200:", String(data.raw).substring(0, 200));
-      return data.raw;
-    }
-    const str = JSON.stringify(data);
-    console.log("[PathwayFinder] returning JSON.stringify(data), length:", str.length, "first 200:", str.substring(0, 200));
-    return str;
+    return JSON.stringify(data);
   }
   throw new Error("Server unavailable after multiple attempts. Please try again.");
 }
@@ -323,7 +84,7 @@ const TOOLTIP_MAP = {
   CEC: "Canadian Experience Class — an Express Entry program for people with Canadian work experience",
   FSW: "Federal Skilled Worker — an Express Entry program for skilled workers with foreign experience",
   FST: "Federal Skilled Trades — an Express Entry program for people with trades qualifications",
-  PNP: "Provincial Nominee Program — provinces can nominate candidates, adding 600 CRS points",
+  PNP: "Provincial Nominee Program — only an Express Entry nomination adds 600 CRS points",
   AAIP: "Alberta Advantage Immigration Program — Alberta's provincial nominee program",
   OINP: "Ontario Immigrant Nominee Program — Ontario's provincial nominee program",
   SINP: "Saskatchewan Immigrant Nominee Program",
@@ -342,7 +103,6 @@ const TOOLTIP_MAP = {
   PR: "Permanent Residence / Permanent Resident",
 };
 
-const CHANCE_TOOLTIPS = { high: "Strong match — you meet most or all requirements and your profile is competitive", moderate: "Moderate match — competitive but may need improvements or the program has limited spots", low: "Possible but challenging — you have gaps to fill or the program is uncertain", veryLow: "Low chance currently — significant changes needed to be competitive" };
 const STATUS_TOOLTIPS = { active: "This program is currently accepting applications with regular draws", limited: "This program has few spots, infrequent draws, or restricted eligibility", changing: "This program is undergoing redesign or restructuring — requirements may change", requires_action: "You need to take specific steps before you can apply to this program" };
 
 function Tooltip({ text, children }) {
@@ -415,7 +175,7 @@ function WhatIfSimulator({ profile, breakdown, mounted }) {
     if (!profile.hasSecondLang || !profile.clb2 || Math.min(profile.clb2.reading || 0, profile.clb2.writing || 0, profile.clb2.listening || 0, profile.clb2.speaking || 0) < 7) {
       s.push({ id: "french7", label: "I learn French to NCLC 7", apply: (p) => { p.hasSecondLang = true; p.clb2 = { reading: 7, writing: 7, listening: 7, speaking: 7 }; } });
     }
-    if (!profile.provincialNomination) s.push({ id: "pnp", label: "I get a provincial nomination", apply: (p) => { p.provincialNomination = true; } });
+    if (!profile.provincialNomination) s.push({ id: "pnp", label: "I receive an Express Entry provincial nomination", apply: (p) => { p.provincialNomination = true; } });
     if (hasPartner && profile.spouseClb) {
       const spMin = Math.min(profile.spouseClb.reading || 0, profile.spouseClb.writing || 0, profile.spouseClb.listening || 0, profile.spouseClb.speaking || 0);
       if (spMin < 9) s.push({ id: "spouse9", label: "My spouse improves to CLB 9+", apply: (p) => { p.spouseClb = { reading: 9, writing: 9, listening: 9, speaking: 9 }; } });
@@ -496,8 +256,9 @@ function ResultsPage({
   onBack,
   onRestart,
   calcCRS,
+  onPrepare,
+  onReport,
 }) {
-  console.log("[PathwayFinder] ResultsPage render — report type:", typeof report, "report is empty:", report === "", "report length:", typeof report === "string" ? report.length : "N/A");
   const [parsedReport, setParsedReport] = useState(null);
   const [rawFallback, setRawFallback] = useState("");
   const [expandedPathway, setExpandedPathway] = useState(0);
@@ -520,8 +281,8 @@ function ResultsPage({
   const [promoCode, setPromoCode] = useState("");
   const [promoError, setPromoError] = useState("");
   const [promoLoading, setPromoLoading] = useState(false);
-  const [aiState, setAiState] = useState("idle"); // "idle" | "loading" | "done" | "error"
-  const [aiReport, setAiReport] = useState(null); // stores AI result locally after promo unlock
+  const [aiState, setAiState] = useState(report ? "done" : "idle"); // "idle" | "loading" | "done" | "error"
+  const [aiReport, setAiReport] = useState(report || null); // stores AI result locally after promo unlock
   const reportContentRef = useRef(null);
   const reportRequestStarted = useRef(false);
 
@@ -552,6 +313,7 @@ function ResultsPage({
             result = await callAI(profile, breakdown);
           }
           setAiReport(result);
+          onReport?.(result);
           setAiState("done");
         } catch (err) {
           setAiReport("Sorry, we couldn't generate your report right now. Please try again in a moment.\n\nError: " + err.message);
@@ -562,94 +324,17 @@ function ResultsPage({
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    // Use aiReport (from promo unlock) if available, otherwise fall back to report prop
-    const activeReport = aiReport !== null ? aiReport : report;
-
-    if (activeReport === null || activeReport === undefined || activeReport === "") {
+    const activeReport = aiReport ?? report;
+    if (!activeReport) { setParsedReport(null); return; }
+    try {
+      const parsed = parseReport(activeReport);
+      setParsedReport(finalizeReport(parsed, profile, { dataAsOf: parsed.assessment?.dataAsOf ?? null }));
+      setRawFallback("");
+    } catch {
       setParsedReport(null);
-      setRawFallback("");
-      return;
+      setRawFallback("The report could not be verified. Return to your profile and try again.");
     }
-
-    if (typeof activeReport === "object") {
-      setParsedReport(activeReport);
-      setRawFallback("");
-      return;
-    }
-
-    if (typeof activeReport === "string") {
-      // Try to parse, with cleanup for AI responses that have prefix text or truncation
-      const tryParse = (str) => {
-        // Strip anything before first { and after last }
-        let cleaned = str;
-        const firstBrace = cleaned.indexOf("{");
-        const lastBrace = cleaned.lastIndexOf("}");
-        if (firstBrace !== -1 && lastBrace !== -1 && firstBrace < lastBrace) {
-          cleaned = cleaned.substring(firstBrace, lastBrace + 1);
-        }
-        return JSON.parse(cleaned);
-      };
-
-      // Repair truncated JSON by closing open strings, arrays, and objects
-      const repairTruncated = (str) => {
-        let s = str;
-        const firstBrace = s.indexOf("{");
-        if (firstBrace !== -1) s = s.substring(firstBrace);
-        // Remove any trailing incomplete string value
-        s = s.replace(/,\s*"[^"]*":\s*"[^"]*$/, "");
-        s = s.replace(/,\s*"[^"]*":\s*$/, "");
-        s = s.replace(/,\s*\{[^}]*$/, "");
-        s = s.replace(/,\s*"[^"]*$/, "");
-        // Count open brackets and braces, close them
-        let openBraces = 0, openBrackets = 0, inString = false, escape = false;
-        for (let i = 0; i < s.length; i++) {
-          const c = s[i];
-          if (escape) { escape = false; continue; }
-          if (c === "\\") { escape = true; continue; }
-          if (c === '"') { inString = !inString; continue; }
-          if (inString) continue;
-          if (c === "{") openBraces++;
-          if (c === "}") openBraces--;
-          if (c === "[") openBrackets++;
-          if (c === "]") openBrackets--;
-        }
-        // If we're inside a string, close it
-        if (inString) s += '"';
-        for (let i = 0; i < openBrackets; i++) s += "]";
-        for (let i = 0; i < openBraces; i++) s += "}";
-        return JSON.parse(s);
-      };
-
-      try {
-        const parsed = tryParse(activeReport);
-        console.log("[PathwayFinder] Parse SUCCESS, keys:", Object.keys(parsed));
-        setParsedReport(parsed);
-        setRawFallback("");
-      } catch (e) {
-        console.warn("[PathwayFinder] Initial parse failed:", e.message, "— attempting truncation repair");
-        try {
-          const repaired = repairTruncated(activeReport);
-          // Truncation repair fired — the AI response was incomplete (likely hit max_tokens).
-          // Surface it loudly instead of silently dropping trailing fields.
-          console.warn(
-            "[PathwayFinder] ⚠ TRUNCATION REPAIR FIRED — AI JSON was incomplete and auto-closed; trailing fields may be missing. Missing expected fields:",
-            ["pathways", "actionPlan", "costs", "timeline", "dataDisclaimer"].filter((k) => !(k in repaired))
-          );
-          console.log("[PathwayFinder] Repair SUCCESS, keys:", Object.keys(repaired));
-          setParsedReport(repaired);
-          setRawFallback("");
-        } catch (e2) {
-          console.error("[PathwayFinder] Repair also failed:", e2.message);
-          setParsedReport(null);
-          setRawFallback(activeReport);
-        }
-      }
-      return;
-    }
-
-    setParsedReport(null);
-    setRawFallback(String(activeReport));
-  }, [report, aiReport]);
+  }, [report, aiReport, profile]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -688,42 +373,22 @@ function ResultsPage({
 
   const loading = aiState === "loading" && !reportReady;
 
-  const categoryCutoffs = [
-    { label: "CEC", min: 507, max: 511 },
-    { label: "French", min: 393, max: 400 },
-    { label: "Healthcare", min: 467, max: 467 },
-    { label: "Senior Mgrs", min: 429, max: 429 },
-    { label: "PNP", min: 710, max: 789 },
-    { label: "Trade", min: 350, max: 400 },
-  ];
 
   const summaryCards = useMemo(() => {
     const total = safeReport?.crs?.total ?? safeBreakdown?.total ?? 0;
     const bestName = topPathway?.name || "Not available";
-    const confidence =
-      typeof topPathway?.chance === "number"
-        ? `${topPathway.chance}%`
-        : topPathway?.chance || "—";
+    const confidence = requirementState(topPathway);
     const insight = safeReport?.crs?.keyInsight || "Your report highlights the most realistic pathways based on your profile.";
 
     return [
-      { label: "CRS Score", value: total || "—", tone: "default" },
+      { label: "CRS Score", value: total ?? "—", tone: "default" },
       { label: "Best Pathway", value: bestName, tone: "default" },
-      { label: "Top Match", value: confidence, tone: "positive" },
+      { label: "Requirements", value: confidence, tone: "default" },
       { label: "Key Insight", value: insight, tone: "wide" },
     ];
   }, [safeReport, safeBreakdown, topPathway]);
 
-  const breakdownItems = [
-    { label: "Age", value: safeBreakdown.age || 0, max: 110 },
-    { label: "Education", value: safeBreakdown.education || 0, max: 150 },
-    { label: "First Language", value: safeBreakdown.firstLanguage || 0, max: 160 },
-    { label: "Second Language", value: safeBreakdown.secondLanguage || 0, max: 50 },
-    { label: "Canadian Work", value: safeBreakdown.canadianWork || 0, max: 80 },
-    { label: "Spouse", value: safeBreakdown.spouse || 0, max: 40 },
-    { label: "Skill Transfer", value: safeBreakdown.skillTransfer || 0, max: 100 },
-    { label: "Additional", value: safeBreakdown.additional || 0, max: 600 },
-  ];
+  const breakdownItems = scoreCategories(safeProfile).map(item => ({ ...item, value: safeBreakdown[item.key] || 0 }));
 
   const safeLosses = Array.isArray(safeReport?.scoreAnalysis?.losses)
     ? safeReport.scoreAnalysis.losses
@@ -778,10 +443,10 @@ function ResultsPage({
     const canadianWorkYears = Number(safeProfile?.canadianWorkExperience || safeProfile?.canadianWorkYears || 0);
 
     return [
-      { key: "improveIelts", label: "I improve IELTS to CLB 9+ all abilities", show: true },
+      { key: "improveIelts", label: "My English reaches CLB 9+ in every ability", show: true },
       { key: "canadianWork", label: "I get 1 year Canadian work experience", show: canadianWorkYears < 1 },
       { key: "french", label: "I learn French to CLB 7", show: true },
-      { key: "nomination", label: "I get a provincial nomination", show: true },
+      { key: "nomination", label: "I receive an Express Entry provincial nomination", show: true },
       { key: "spouseLanguage", label: "My spouse improves language scores", show: hasSpouse },
     ].filter((item) => item.show);
   }, [safeProfile]);
@@ -791,17 +456,17 @@ function ResultsPage({
 
     if (simulatorState.improveIelts) {
       // Set CLB 9+ on all abilities (calcCRS reads from profile.clb)
-      next.clb = { reading: 10, writing: 10, listening: 10, speaking: 10 };
+      next.clb = Object.fromEntries(["reading", "writing", "listening", "speaking"].map(key => [key, Math.max(9, next.clb?.[key] || 0)]));
       // Also update raw scores so re-conversion won't overwrite
       next.firstLangTest = "clb_direct";
-      next.firstLangScores = { reading: "10", writing: "10", listening: "10", speaking: "10" };
+      next.firstLangScores = { ...next.clb };
     }
     if (simulatorState.canadianWork) {
       next.canadianWorkYears = String(Math.max(1, Number(next.canadianWorkYears || 0)));
     }
     if (simulatorState.french) {
       next.hasSecondLang = true;
-      next.clb2 = { reading: 7, writing: 7, listening: 7, speaking: 7 };
+      next.clb2 = Object.fromEntries(["reading", "writing", "listening", "speaking"].map(key => [key, Math.max(7, next.clb2?.[key] || 0)]));
       next.secondLangTest = "clb_direct";
       next.secondLangScores = { reading: "7", writing: "7", listening: "7", speaking: "7" };
     }
@@ -839,23 +504,14 @@ function ResultsPage({
     return projected;
   }, [calcCRS, simulatedProfile, safeReport, safeBreakdown, simulatorState]);
 
-  // Calculate projected score by adding realistic opportunity gains (exclude PNP +600)
-  const projectedScore = (() => {
-    const current = safeReport?.crs?.total ?? safeBreakdown?.total ?? 0;
-    const totalGain = safeOpportunities
-      .filter((item) => (item?.pointsGain || 0) < 500)
-      .reduce((sum, item) => sum + (item?.pointsGain || 0), 0);
-    const raw = totalGain > 0 ? current + totalGain : simulatedScore;
-    // Safety cap: projected score should never exceed current + 200
-    return Math.min(raw, current + 200);
-  })();
+  const projectedScore = safeReport?.scoreAnalysis?.projectedTotal ?? safeBreakdown.total ?? 0;
 
   const shareSummary = () => {
     const summaryText = [
       `PathwayFinder Report`,
       `CRS Score: ${safeReport?.crs?.total ?? safeBreakdown?.total ?? "—"}`,
       `Best Pathway: ${topPathway?.name || "Not available"}`,
-      `Top Match: ${typeof topPathway?.chance === "number" ? `${topPathway?.chance}%` : topPathway?.chance || "—"}`,
+      `Requirements: ${requirementState(topPathway)}`,
       `Key Insight: ${safeReport?.crs?.keyInsight || "—"}`,
     ].join("\n");
 
@@ -868,7 +524,7 @@ function ResultsPage({
     if (pdfGenerating) return;
     setPdfGenerating(true);
     try {
-      const response = await fetch('https://us-central1-pathwayfinder-3b040.cloudfunctions.net/generatePdf', {
+      const response = await fetch(import.meta.env.VITE_GENERATE_PDF_URL || 'https://us-central1-pathwayfinder-3b040.cloudfunctions.net/generatePdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -919,6 +575,7 @@ function ResultsPage({
             result = await callAI(profile, breakdown);
           }
           setAiReport(result);
+          onReport?.(result);
           setAiState("done");
         } catch (err) {
           setAiReport("Sorry, we couldn't generate your report right now. Please try again in a moment.\n\nError: " + err.message);
@@ -1521,69 +1178,8 @@ function ResultsPage({
     return <AssessmentReportError onBack={onBack} />;
   }
 
-  if (!parsedReport && rawFallback) {
-    return (
-      <div style={styles.page}>
-        <style>{`
-          @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
-          * { box-sizing: border-box; }
-          html { scroll-behavior: smooth; }
-          body { margin: 0; }
-          button:focus-visible, a:focus-visible { outline: 2px solid #df969b; outline-offset: 3px; }
-        `}</style>
-        <div style={styles.header}>
-          <div style={{ ...styles.container, ...styles.headerInner }}>
-            <div style={styles.brand}>
-              <div style={styles.brandMark}>🍁</div>
-              <div>
-                <p style={styles.brandTitle}>PathwayFinder</p>
-                <p style={styles.brandSub}>Immigration Pathway Evaluation</p>
-              </div>
-            </div>
-            <div style={styles.buttonRow}>
-              <button type="button" style={styles.secondaryBtn} onClick={onBack}>Edit profile</button>
-              <button type="button" style={styles.primaryBtn} onClick={onRestart}>New assessment</button>
-            </div>
-          </div>
-        </div>
-        <section style={styles.section}>
-          <div style={styles.container}>
-            <div style={styles.card}>
-              <div style={styles.label}>{unlocked ? "Full report" : "Free preview"}</div>
-              <h1 style={{ ...styles.sectionTitle, marginBottom: 16 }}>Your Pathway Report</h1>
-              {!unlocked && (
-                <div style={{ padding: "32px 0" }}>
-                  <div style={{ textAlign: "center", fontSize: 40, marginBottom: 12 }}>🔒</div>
-                  <h2 style={{ fontFamily: "'Instrument Serif', Georgia, serif", fontSize: 24, fontWeight: 600, color: "#eeede8", margin: "0 0 8px", textAlign: "center" }}>
-                    Unlock Your Full Report
-                  </h2>
-                  <p style={{ fontFamily: "'Manrope', sans-serif", fontSize: 14, color: "#aaa7a1", lineHeight: 1.6, margin: "0 0 20px", textAlign: "center" }}>
-                    Enter your access code to view the full report.
-                  </p>
-                  <input type="text" value={promoCode} onChange={(e) => setPromoCode(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleUnlock(); }} placeholder="Enter access code" style={{ width: "100%", height: 48, borderRadius: 12, border: "1px solid rgba(220,210,200,0.12)", padding: "0 14px", fontFamily: "'Manrope', sans-serif", fontSize: 15, color: "#eeede8", outline: "none", boxSizing: "border-box", marginBottom: 12 }} />
-                  <button type="button" onClick={handleUnlock} disabled={promoLoading} style={{ width: "100%", border: "none", background: "#a83f49", color: "#fff", padding: "12px 16px", borderRadius: 12, fontFamily: "'Manrope', sans-serif", fontSize: 14, fontWeight: 700, cursor: promoLoading ? "wait" : "pointer", opacity: promoLoading ? 0.7 : 1 }}>
-                    {promoLoading ? "Validating..." : "Unlock Report →"}
-                  </button>
-                  {promoError && <p style={{ color: "#ee9696", fontSize: 13, fontWeight: 600, marginTop: 10, marginBottom: 0 }}>{promoError}</p>}
-                </div>
-              )}
-              <div style={!unlocked ? { filter: "blur(8px)", pointerEvents: "none", userSelect: "none", maxHeight: 200, overflow: "hidden", position: "relative" } : {}}>
-                <div style={styles.fallbackText}>{rawFallback}</div>
-              </div>
-              {!unlocked && (
-                <div style={{ textAlign: "center", paddingTop: 16, background: "linear-gradient(to bottom, rgba(18,18,18,0) 0%, rgba(18,18,18,1) 40%)", marginTop: -60, position: "relative", zIndex: 2, paddingBottom: 8 }}>
-                  <p style={{ fontSize: 13, color: "#aaa7a1" }}>Enter your access code above to see the full report</p>
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-      </div>
-    );
-  }
+  if (!parsedReport && rawFallback) return <AssessmentReportError onBack={onBack} />;
 
-  const totalCost = safeReport?.costs?.total || costItems.reduce((sum, item) => sum + Number(item?.amount || 0), 0);
-  const biggestCost = Math.max(...costItems.map((item) => Number(item?.amount || 0)), 1);
   const currentScore = safeReport?.crs?.total ?? safeBreakdown?.total ?? 0;
 
   return (
@@ -1810,7 +1406,7 @@ function ResultsPage({
         </div>
       )}
 
-      {/* When idle (no AI call yet), show static fake placeholder behind blur */}
+      {/* Preview structure before a report is generated. */}
       {aiState === "idle" && (
         <div style={{ filter: "blur(8px)", pointerEvents: "none", userSelect: "none", maxHeight: 400, overflow: "hidden", position: "relative" }}>
           <section style={styles.section}>
@@ -1819,9 +1415,9 @@ function ResultsPage({
               <p style={styles.sectionLead}>Personalized pathway analysis based on your profile.</p>
               <div style={{ display: "grid", gap: 16 }}>
                 {[
-                  { name: "Express Entry — Federal Skilled Worker", chance: "High", timeline: "6–8 months" },
-                  { name: "Provincial Nominee Program (Ontario)", chance: "Moderate", timeline: "12–16 months" },
-                  { name: "Canadian Experience Class", chance: "Moderate", timeline: "4–6 months" },
+                  { name: "Pathway requirements", timeline: "To be verified" },
+                  { name: "Profile gaps and unknowns", timeline: "To be verified" },
+                  { name: "Possible next steps", timeline: "To be verified" },
                 ].map((pw, i) => (
                   <div key={i} style={{ ...styles.card, padding: 22 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 12 }}>
@@ -1832,7 +1428,7 @@ function ResultsPage({
                       </div>
                     </div>
                     <div style={{ display: "flex", gap: 10 }}>
-                      <span style={{ ...styles.badge("#242021", "#eeede8"), fontSize: 12 }}>Chance: {pw.chance}</span>
+                      <span style={{ ...styles.badge("#242021", "#eeede8"), fontSize: 12 }}>Awaiting assessment</span>
                       <span style={{ ...styles.badge("#242019", "#d9c897"), fontSize: 12 }}>Action plan included</span>
                     </div>
                   </div>
@@ -1895,6 +1491,21 @@ function ResultsPage({
         </div>
       </section>
 
+      {safeReport.assessment?.funds && <section style={styles.section}>
+        <div className="pf-container" style={styles.container}><div style={styles.card}>
+          <h2 style={styles.sectionTitle}>Settlement funds check</h2>
+          <p style={styles.sectionLead}>A preliminary comparison for Express Entry’s Federal Skilled Worker and Federal Skilled Trades programs. Canadian Experience Class is exempt; provincial programs can have different rules.</p>
+          <dl style={{ display: "grid", gap: 12, fontSize: 14, color: "#c5c2ba" }}>
+            {[["Family members counted", safeReport.assessment.funds.familySize ?? "Needs clarification"],
+              ["Stated funds", formatMoney(safeReport.assessment.funds.available)],
+              ["Published minimum", formatMoney(safeReport.assessment.funds.required)],
+              ["Comparison", ({ sufficient: "Stated amount meets this minimum", insufficient: "Stated amount is below this minimum", exempt: "Potential exemption: valid offer and work authorization reported", unknown: "More information needed" })[safeReport.assessment.funds.status]]
+            ].map(([label, value]) => <div key={label} style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 12 }}><dt>{label}</dt><dd>{value}</dd></div>)}
+          </dl>
+          <p style={{ marginTop: 20, fontSize: 12, color: "#aaa7a1", lineHeight: 1.7 }}>Includes non-accompanying family. Amounts are self-reported; access to funds and supporting evidence still need verification. <a href={safeReport.assessment.funds.sourceUrl} target="_blank" rel="noreferrer" style={{ color: "#eeede8" }}>IRCC source</a> · checked {safeReport.assessment.funds.verifiedAt}.</p>
+        </div></div>
+      </section>}
+
       <section
         ref={(el) => addSectionRef(el, 2)}
         data-section="crs"
@@ -1904,7 +1515,7 @@ function ResultsPage({
           <div style={styles.reveal("crs") }>
             <h2 style={styles.sectionTitle}>CRS score analysis</h2>
             <p style={styles.sectionLead}>
-              This section shows where your score comes from, how competitive it looks, and which draw categories are closer to your current profile.
+              Your calculated points, based on the information you provided. Program eligibility is assessed separately.
             </p>
           </div>
           <div className="pf-score-hero" style={styles.scoreHero}>
@@ -1937,24 +1548,7 @@ function ResultsPage({
                 })}
               </div>
 
-              <div style={styles.cutoffWrap}>
-                <div style={{ ...styles.label, marginTop: 8 }}>Draw comparison</div>
-                {categoryCutoffs.map((cutoff) => {
-                  const left = (cutoff.min / 1200) * 100;
-                  const width = ((cutoff.max - cutoff.min) / 1200) * 100;
-                  const marker = (currentScore / 1200) * 100;
-                  return (
-                    <div key={cutoff.label} className="pf-cutoff-row" style={styles.cutoffRow}>
-                      <div style={{ fontSize: 13, color: "#c5c2ba", fontWeight: 700 }}>{cutoff.label}</div>
-                      <div style={styles.cutoffTrack}>
-                        <div style={styles.cutoffRange(left, width)} />
-                        <div style={styles.cutoffMarker(marker)} />
-                      </div>
-                      <div style={{ fontSize: 13, color: "#aaa7a1", textAlign: "right", ...styles.mono }}>{cutoff.min}-{cutoff.max}</div>
-                    </div>
-                  );
-                })}
-              </div>
+              <p style={{ marginTop: 24, fontSize: 13, lineHeight: 1.7, color: "#aaa7a1" }}>Compare only with recent invitation rounds you qualify for. A score above a past cutoff does not establish eligibility.</p>
             </div>
           </div>
         </div>
@@ -1993,7 +1587,7 @@ function ResultsPage({
                       {item?.fixable ? (
                         <span style={styles.badge("#282018", "#e2b786")}>Improvable</span>
                       ) : (
-                        <span style={styles.badge("#2c1919", "#ee9991")}>Can’t change</span>
+                        <span style={styles.badge("#242021", "#b4b0a9")}>Not modeled</span>
                       )}
                     </td>
                     <td style={styles.td}>{item?.explanation || "—"}</td>
@@ -2012,9 +1606,9 @@ function ResultsPage({
       >
         <div className="pf-container" style={styles.container}>
           <div style={styles.reveal("opps") }>
-            <h2 style={styles.sectionTitle}>How to gain points</h2>
+            <h2 style={styles.sectionTitle}>Language score scenarios</h2>
             <p style={styles.sectionLead}>
-              These are the highest-value improvements based on your current profile.
+              Calculated language scenarios with your other answers unchanged. These are not predictions or recommendations to spend money.
             </p>
           </div>
           <div className="pf-opportunities-grid" style={styles.opportunitiesGrid}>
@@ -2035,6 +1629,7 @@ function ResultsPage({
                 </div>
                 <div style={{ marginTop: 14, fontSize: 14, color: "#c5c2ba", lineHeight: 1.65 }}>
                   Estimated cost: <strong>{formatMoney(item?.cost)}</strong>
+                  <p style={{ marginTop: 10 }}>{item?.explanation}</p>
                 </div>
               </div>
             ))}
@@ -2060,13 +1655,9 @@ function ResultsPage({
               </div>
             </div>
             <div style={{ marginTop: 12, fontSize: 16, lineHeight: 1.75, color: "#E4F2EA" }}>
-              Your score could go from <strong>{currentScore}</strong> to <strong>{projectedScore}</strong> based on the strongest improvement opportunities in this report.
+              Your score could go from <strong>{currentScore}</strong> to <strong>{projectedScore}</strong> if English reaches CLB 9 and French reaches NCLC 7 in every ability, with other answers unchanged.
             </div>
-            <div style={{ marginTop: 16, display: "flex", flexWrap: "wrap", gap: 10 }}>
-              {categoryCutoffs.filter((item) => projectedScore >= item.min).map((item) => (
-                <span key={item.label} style={styles.badge("rgba(255,255,255,0.12)", "#FFFFFF")}>Crosses {item.label} range</span>
-              ))}
-            </div>
+
           </div>
         </div>
       </section>
@@ -2081,13 +1672,14 @@ function ResultsPage({
           <div style={styles.reveal("pathways") }>
             <h2 style={styles.sectionTitle}>Recommended pathways</h2>
             <p style={styles.sectionLead}>
-              These are the strongest pathways for your profile right now, ranked by fit, timing, and overall practicality.
+              Options to investigate based on your answers. Requirements are preliminary and need verification against current official guidance.
             </p>
           </div>
           <div className="pf-pathways-grid" style={styles.pathwaysGrid}>
+            {safePathways.length === 0 && <p style={styles.sectionLead}>No supported pathway was identified from these answers. Review missing details and current official requirements before deciding your next step.</p>}
             {safePathways.map((pathway, index) => {
               const statusStyle = getStatusStyle(pathway?.status);
-              const chance = typeof pathway?.chance === "number" ? pathway.chance : Number(String(pathway?.chance || "").replace("%", "")) || 0;
+              const requirementsLabel = requirementState(pathway);
               const expanded = expandedPathway === index;
               const reqs = Array.isArray(pathway?.requirements) ? pathway.requirements : [];
               return (
@@ -2109,19 +1701,8 @@ function ResultsPage({
                         </div>
                       </div>
                       <div style={{ minWidth: 120, textAlign: "right" }}>
-                        <div style={styles.label}>Match confidence</div>
-                        <div style={{ fontSize: 36, fontWeight: 800, color: "#eeede8", ...styles.mono }}>{chance}%</div>
-                      </div>
-                    </div>
-
-                    <div className="pf-pathway-stats" style={styles.pathwayStats}>
-                      <div style={styles.progressWrap}>
-                        <div style={styles.barTrack}>
-                          <div style={styles.barFill(chance)} />
-                        </div>
-                      </div>
-                      <div style={{ fontSize: 14, color: "#aaa7a1", textAlign: "right" }}>
-                        Timeline: <strong style={{ color: "#c5c2ba" }}>{pathway?.timeline || "—"}</strong>
+                        <div style={styles.label}>Requirements</div>
+                        <div style={{ fontSize: 15, lineHeight: 1.5, color: "#eeede8" }}>{requirementsLabel}</div>
                       </div>
                     </div>
 
@@ -2133,10 +1714,10 @@ function ResultsPage({
                     <div className="pf-checklist" style={styles.checklist}>
                       {reqs.map((req, reqIndex) => {
                         const label = typeof req === "string" ? req : (req?.label || req?.item);
-                        const met = typeof req === "string" ? true : !!req?.met;
+                        const met = typeof req === "string" ? null : req?.met;
                         return (
                           <div key={`${label}-${reqIndex}`} style={styles.checklistItem}>
-                            <span style={{ color: met ? "#9fceb4" : "#ee9991", fontWeight: 900 }}>{met ? "✓" : "✗"}</span>
+                            <span style={{ color: met === true ? "#9fceb4" : met === false ? "#ee9991" : "#d9b888", fontWeight: 900 }}>{met === true ? "✓" : met === false ? "✗" : "?"}</span>
                             <span>{label}</span>
                           </div>
                         );
@@ -2226,7 +1807,7 @@ function ResultsPage({
           <div style={styles.reveal("sim") }>
             <h2 style={styles.sectionTitle}>What If? Score Simulator</h2>
             <p style={styles.sectionLead}>
-              Explore how common improvements could change your score and open stronger draw categories.
+              Explore how changes affect your calculated score. Separate program requirements still apply.
             </p>
           </div>
           <div className="pf-simulator-grid" style={styles.simulatorGrid}>
@@ -2258,11 +1839,7 @@ function ResultsPage({
                 </div>
                 <div style={styles.badge("#18231d", "#9fceb4")}>+{simulatedScore - currentScore}</div>
               </div>
-              <div style={{ marginTop: 20, display: "flex", flexWrap: "wrap", gap: 10 }}>
-                {categoryCutoffs.filter((item) => simulatedScore >= item.min).map((item) => (
-                  <span key={item.label} style={styles.badge("#18231d", "#9fceb4")}>Could enter {item.label} range</span>
-                ))}
-              </div>
+
             </div>
           </div>
         </div>
@@ -2295,13 +1872,13 @@ function ResultsPage({
               <tbody>
                 {[
                   ["Program", (p) => p?.stream || "—"],
-                  ["Match %", (p) => (typeof p?.chance === "number" ? `${p.chance}%` : p?.chance || "—")],
+                  ["Requirements", (p) => requirementState(p)],
                   ["Timeline", (p) => p?.timeline || "—"],
                   ["Cost", (p) => formatMoney(p?.cost)],
                   ["Status", (p) => p?.status || "—"],
                   ["Key missing requirement", (p) => {
                     const unmet = (Array.isArray(p?.requirements) ? p.requirements : []).find((req) => typeof req !== "string" && !req?.met);
-                    return typeof unmet === "string" ? unmet : unmet?.label || "None highlighted";
+                    return typeof unmet === "string" ? unmet : unmet?.label || unmet?.item || "Review all requirements";
                   }],
                 ].map(([rowLabel, getter]) => (
                   <tr key={rowLabel}>
@@ -2433,6 +2010,16 @@ function ResultsPage({
         </div>
       </section>
 
+      <section className="no-print" style={styles.section}>
+        <div className="pf-container" style={styles.container}>
+          <div style={styles.card}>
+            <h2 style={styles.sectionTitle}>Already nominated?</h2>
+            <p style={styles.sectionLead}>Explore a preparation worksheet for the federal non-Express Entry PNP process. This prototype covers selected information only; it does not complete or submit an application.</p>
+            <Button onClick={onPrepare}>Open preparation worksheet</Button>
+          </div>
+        </div>
+      </section>
+
       <section
         ref={(el) => addSectionRef(el, 12)}
         data-section="share"
@@ -2477,7 +2064,7 @@ function ResultsPage({
       <footer style={{ borderTop: "1px solid rgba(220,210,200,0.10)", padding: "28px 0 54px" }}>
         <div className="pf-container" style={styles.container}>
           <div style={{ fontSize: 14, lineHeight: 1.75, color: "#aaa7a1" }}>
-            This report is for informational purposes only and is not legal or immigration advice. Data valid as of March 2026 — verify current program details on official sources before making important decisions.
+            This report is for informational purposes only and is not legal or immigration advice. Verify current program details on official sources before making important decisions.
           </div>
         </div>
       </footer>
@@ -2487,117 +2074,14 @@ function ResultsPage({
 
 
 // ============================================================
-// PROFILE MAPPING: AssessmentFlow → calcCRS format
-// ============================================================
-
-function mapProfileForCRS(formProfile) {
-  const educationMap = {
-    "PhD": "phd",
-    "Master's": "masters",
-    "Two or more credentials (one 3+ yr)": "two_plus",
-    "Bachelor's (3+ yr)": "bachelors",
-    "2-year post-secondary": "two_year",
-    "1-year post-secondary": "one_year",
-    "High school diploma": "high_school",
-    "Less than high school": "below_hs",
-  };
-
-  const workYearsMap = {
-    "None": 0, "1 year": 1, "2 years": 2, "3 years": 3,
-    "4 years": 4, "5+ years": 5, "4-5 years": 4, "6+ years": 6,
-    "4+ years": 4, "3+ years": 3,
-  };
-
-  const langTestMap = {
-    "IELTS General Training": "ielts",
-    "CELPIP General": "celpip",
-    "PTE Core": "pte",
-    "No test yet": "",
-    "IELTS": "ielts",
-    "CELPIP": "celpip",
-    "TEF Canada": "tef",
-    "TCF Canada": "tcf",
-  };
-
-  const teerMap = {
-    "TEER 0": "0", "TEER 1": "1", "TEER 2": "2", "TEER 3": "3", "TEER 4 or 5": "4", "Not sure": "1",
-  };
-
-  const maritalMap = {
-    "Single": "single", "Married": "married", "Common-law": "common_law",
-    "Divorced": "single", "Separated": "single", "Widowed": "single",
-  };
-
-  const mapped = {
-    age: Number(formProfile.age) || 0,
-    maritalStatus: maritalMap[formProfile.maritalStatus] || "single",
-    spouseAccompanying: formProfile.spouseAccompanying === "Yes",
-    spouseIsCitizenPR: formProfile.spouseIsCitizenPR === "Yes",
-    dependentChildren: Number(formProfile.dependentChildren) || 0,
-    citizenship: formProfile.citizenship || "",
-    education: educationMap[formProfile.education] || "high_school",
-    educationCountry: formProfile.educationCountry === "In Canada" ? "canada" : "foreign",
-    ecaObtained: formProfile.ecaObtained === "Yes",
-    canadianEducationYears: formProfile.educationCountry === "In Canada" ? ({"1 year or less": 1, "2 years": 2, "3+ years (degree program)": 3, "1 year": 1, "3+ years": 3}[formProfile.canadianEducationYears] || 0) : 0,
-    firstLangTest: langTestMap[formProfile.firstLangTest] || "ielts",
-    firstLangScores: {
-      reading: Number(formProfile.reading) || 0,
-      writing: Number(formProfile.writing) || 0,
-      listening: Number(formProfile.listening) || 0,
-      speaking: Number(formProfile.speaking) || 0,
-    },
-    hasSecondLang: formProfile.hasSecondLang === "Yes",
-    secondLangTest: langTestMap[formProfile.secondLangTest] || "",
-    secondLangScores: {
-      reading: Number(formProfile.frReading) || 0,
-      writing: Number(formProfile.frWriting) || 0,
-      listening: Number(formProfile.frListening) || 0,
-      speaking: Number(formProfile.frSpeaking) || 0,
-    },
-    spouseEducation: educationMap[formProfile.spouseEducation] || "below_hs",
-    spouseLangTest: langTestMap[formProfile.spouseLangTest] || "ielts",
-    spouseClbScores: {
-      reading: Number(formProfile.spouseReading) || 0,
-      writing: Number(formProfile.spouseWriting) || 0,
-      listening: Number(formProfile.spouseListening) || 0,
-      speaking: Number(formProfile.spouseSpeaking) || 0,
-    },
-    spouseCanadianWorkYears: workYearsMap[formProfile.spouseCanadianWorkYears] || 0,
-    foreignWorkYears: workYearsMap[formProfile.foreignWorkYears] || 0,
-    canadianWorkYears: workYearsMap[formProfile.canadianWorkYears] || 0,
-    nocTeer: teerMap[formProfile.nocTeer] || "1",
-    inCanada: formProfile.inCanada === "Yes",
-    currentProvince: formProfile.currentProvince || "",
-    siblingInCanada: formProfile.siblingInCanada === "Yes",
-    provincialNomination: formProfile.provincialNomination === "Yes",
-    provincePreference: formProfile.provincePreference || "Open to any",
-    hasJobOffer: formProfile.hasJobOffer === "Yes",
-    settlementFunds: Number(formProfile.settlementFunds) || 0,
-    previousRefusals: formProfile.previousRefusals === "Yes",
-    criminalHistory: formProfile.criminalHistory === "Yes",
-    openToStudy: formProfile.openToStudy === "Yes",
-  };
-
-  // Compute CLB scores from raw test scores
-  if (mapped.firstLangScores.reading > 0) {
-    mapped.clb = convertToClb(mapped.firstLangTest, mapped.firstLangScores);
-  }
-  if (mapped.hasSecondLang && mapped.secondLangScores.reading > 0) {
-    mapped.clb2 = convertToClb(mapped.secondLangTest, mapped.secondLangScores);
-  }
-  if (mapped.spouseClbScores.reading > 0) {
-    mapped.spouseClb = convertToClb(mapped.spouseLangTest, mapped.spouseClbScores);
-  }
-
-  return mapped;
-}
-
-// ============================================================
 // ASSESSMENT PAGE
 // ============================================================
 
-function AssessmentPage({ onBack }) {
-  const [analysisState, setAnalysisState] = useState("form"); // "form" | "loading" | "results"
+function AssessmentPage({ onBack, onPrepare }) {
+  const [analysisState, setAnalysisState] = useState("form");
+  const [assessmentRevision, setAssessmentRevision] = useState(0);
+  const currentRevision = useRef(0);
+  const [assessmentError, setAssessmentError] = useState(""); // "form" | "loading" | "results"
   const [report, setReport] = useState("");
   const [mappedProfile, setMappedProfile] = useState(null);
   const [formProfile, setFormProfile] = useState(null);
@@ -2605,6 +2089,7 @@ function AssessmentPage({ onBack }) {
 
   // DEV: reset to dev profile on restart
   const devReset = () => {
+    currentRevision.current += 1;
     setAnalysisState("form");
     setReport("");
     setMappedProfile(null);
@@ -2616,27 +2101,33 @@ function AssessmentPage({ onBack }) {
     setFormProfile(formProfile);
     window.scrollTo(0, 0);
     const mapped = mapProfileForCRS(formProfile);
-    const bd = calcCRS(mapped);
-    setMappedProfile(mapped);
+    const validation = validateAssessmentProfile(mapped);
+    if (validation.issues.length) {
+      setAssessmentError(validation.issues.map(issue => issue.message).join(" "));
+      return false;
+    }
+    const bd = validation.breakdown;
+    setAssessmentError("");
+    currentRevision.current += 1;
+    setAssessmentRevision(currentRevision.current);
+    setMappedProfile(validation.profile);
     setBreakdown(bd);
     setReport("");
     setAnalysisState("results");
   };
 
-  if (analysisState === "results") {
-    return (
-      <ResultsPage
-        report={report}
-        breakdown={breakdown}
-        profile={mappedProfile || {}}
-        onBack={() => setAnalysisState("form")}
-        onRestart={devReset}
-        calcCRS={calcCRS}
-      />
-    );
-  }
-
-  return <AssessmentFlow onComplete={handleComplete} onBack={onBack} initialProfile={formProfile} />;
+  return <>
+    {analysisState === "form" && <>
+      {assessmentError && <p role="alert" style={{ padding: 20, color: "#efafa8" }}>{assessmentError}</p>}
+      <AssessmentFlow onComplete={handleComplete} onBack={onBack} initialProfile={formProfile} />
+    </>}
+    {mappedProfile && <div hidden={analysisState !== "results"}>
+      <ResultsPage key={assessmentRevision} report={report} breakdown={breakdown} profile={mappedProfile}
+        onBack={() => setAnalysisState("form")} onRestart={devReset} calcCRS={calcCRS}
+        onReport={result => { if (currentRevision.current === assessmentRevision) setReport(result); }}
+        onPrepare={() => onPrepare(formProfile)} />
+    </div>}
+  </>;
 }
 
 /* ============================================================
@@ -2655,6 +2146,17 @@ export default function App() {
   const [page, setPage] = useState(DEV_CONFIG.enabled ? "assessment" : "landing");
   const [showDisclaimer, setShowDisclaimer] = useState(false);
   const [disclaimerAccepted, setDisclaimerAccepted] = useState(DEV_CONFIG.enabled);
+  const [assessmentStarted, setAssessmentStarted] = useState(DEV_CONFIG.enabled);
+  const [preparationSession, setPreparationSession] = useState(null);
+  const [preparationReturnTo, setPreparationReturnTo] = useState("landing");
+
+  const openPreparation = (profile = null, returnTo = "landing") => {
+    // One worksheet per tab session. Assessment edits never overwrite confirmed facts.
+    setPreparationSession(current => current || { profile });
+    setPreparationReturnTo(returnTo);
+    setPage("preparation");
+    window.scrollTo(0, 0);
+  };
 
   useEffect(() => {
     if (!document.querySelector('meta[name="viewport"]')) {
@@ -2666,13 +2168,14 @@ export default function App() {
   }, []);
 
   const handleStart = () => {
-    if (disclaimerAccepted) { setPage("assessment"); window.scrollTo(0, 0); }
+    if (disclaimerAccepted) { setAssessmentStarted(true); setPage("assessment"); window.scrollTo(0, 0); }
     else { window.scrollTo(0, 0); setShowDisclaimer(true); }
   };
 
   const handleAccept = () => {
     setDisclaimerAccepted(true);
     setShowDisclaimer(false);
+    setAssessmentStarted(true);
     setPage("assessment");
   };
 
@@ -2680,8 +2183,14 @@ export default function App() {
     <>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&family=Playfair+Display:wght@700;800&display=swap" rel="stylesheet" />
       {showDisclaimer && <DisclaimerModal onAccept={handleAccept} onDecline={() => setShowDisclaimer(false)} />}
-      {page === "landing" && <CountryExperience onStartCanada={handleStart} />}
-      {page === "assessment" && <div className="dark-assessment"><AssessmentPage onBack={() => { setPage("landing"); window.scrollTo(0, 0); }} /></div>}
+      {page === "landing" && <CountryExperience onStartCanada={handleStart} onOpenPreparation={() => openPreparation()} />}
+      {assessmentStarted && <div className="dark-assessment" hidden={page !== "assessment"}><AssessmentPage
+        onBack={() => { setPage("landing"); window.scrollTo(0, 0); }}
+        onPrepare={profile => openPreparation(profile, "assessment")} /></div>}
+      {preparationSession && <div className="dark-assessment" hidden={page !== "preparation"}><PreparationFlow
+        assessmentProfile={preparationSession.profile}
+        backLabel={preparationReturnTo === "assessment" ? "Back to report" : "Back to Canada"}
+        onBack={() => { setPage(preparationReturnTo); window.scrollTo(0, 0); }} /></div>}
     </>
   );
 }
