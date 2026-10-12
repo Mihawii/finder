@@ -402,6 +402,8 @@ function ResultsPage({
   const safeActionPlan = Array.isArray(safeReport?.actionPlan) ? safeReport.actionPlan : [];
   const safeTimeline = Array.isArray(safeReport?.timeline) ? safeReport.timeline : [];
   const costItems = Array.isArray(safeReport?.costs?.items) ? safeReport.costs.items : [];
+  const totalCost = safeReport?.costs?.total ?? costItems.reduce((total, item) => total + Number(item?.amount || 0), 0);
+  const biggestCost = Math.max(0, ...costItems.map(item => Number(item?.amount || 0)));
 
   const formatMoney = (value) => {
     if (value === null || value === undefined || value === "") return "—";
