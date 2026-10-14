@@ -6,7 +6,7 @@ type: project
 
 # PathwayFinder architecture
 
-Updated 2026-10-11. This describes the current source tree, not a deployment confirmation. Historical `project_state.md` notes predate the shared modules and must not be used to reintroduce already-fixed bugs.
+Updated 2026-10-13. This describes the current source tree, not a deployment confirmation. Historical `project_state.md` notes predate the shared modules and must not be used to reintroduce already-fixed bugs.
 
 ## Product boundary
 
@@ -19,6 +19,7 @@ The core flow remains a Canadian profile assessment and personalized report. A s
 | `src/main.jsx` | React entry point |
 | `src/country-experience.jsx` | Destination experience and Canada entry; preserve photography/flags |
 | `pathwayfinder-app (2).jsx` | Assessment/results/preparation orchestration, report UI and export requests |
+| `src/report-view.jsx`, `src/styles/report.css` | Focused report chapters, bento presentation, score scenarios and export actions |
 | `src/assessment_flow.jsx`, `src/assessment-data.js` | Grouped assessment and editable review |
 | `functions/lib/assessment/crs.js` | Pure CRS tables, conversions and calculation |
 | `functions/lib/assessment/profile.js` | Normalized profile with explicit unknowns and nomination type |
@@ -33,6 +34,8 @@ The core flow remains a Canadian profile assessment and personalized report. A s
 | `tests/assessment.test.js`, `report.test.js`, `preparation.test.js` | Domain and contract regressions |
 
 Pure shared modules deliberately live under `functions/lib/`: Vite imports them directly and Firebase includes them in the Node function deployment. No copy of scoring logic belongs in the frontend.
+
+The assessment retains the selected 21st.dev wizard's grouped navigation, validation and editable review, with one question or related score group visible at a time. Review displays one selected section. The report shows one of seven chapters at a time; pathway details, plan items and budget views use progressive disclosure. Preparation similarly displays one question, history collection/entry or review section. All answers and drafts remain in React memory during internal navigation.
 
 ## Assessment and report flow
 

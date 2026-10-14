@@ -14,26 +14,17 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const sourcePath = path.join(root, 'pathwayfinder-app (2).jsx');
 const source = await readFile(sourcePath, 'utf8');
 const compiled = await build({
-  stdin: { contents: `${source}\nexport { ResultsPage };`, sourcefile: sourcePath, resolveDir: root, loader: 'jsx' },
+  stdin: { contents: `${source}\nexport { ResultsPage, AssessmentFlow, PreparationFlow };\nexport { ReportBudget } from "./src/report-view.jsx";`, sourcefile: sourcePath, resolveDir: root, loader: 'jsx' },
   bundle: true, write: false, platform: 'node', format: 'cjs', jsx: 'automatic',
   packages: 'external', alias: { '@': root }, loader: { '.css': 'empty' },
   define: { 'import.meta.env': '{}' }, logLevel: 'silent',
 });
 const require = createRequire(sourcePath);
-let stateIndex = 0;
-let reportState;
-// SSR does not run effects. Seed only ResultsPage's first (parsed-report) state
-// so both the real initial render and the post-response render are exercised.
-// All remaining hooks, JSX and child components use React's actual renderer.
-const hooks = { ...React, useState(initial) {
-  const seed = stateIndex++ === 0 && reportState !== undefined ? reportState : initial;
-  return React.useState(seed);
-} };
 const componentModule = { exports: {} };
 new Function('require', 'module', 'exports', compiled.outputFiles[0].text)(
-  name => name === 'react' ? hooks : require(name), componentModule, componentModule.exports,
+  require, componentModule, componentModule.exports,
 );
-const { ResultsPage } = componentModule.exports;
+const { ResultsPage, ReportBudget, AssessmentFlow, PreparationFlow } = componentModule.exports;
 
 const profile = {
   age: 30, maritalStatus: 'single', dependentChildren: 0, education: 'masters',
@@ -49,24 +40,21 @@ function report(costs) {
   }, profile);
 }
 function render(parsedReport) {
-  reportState = parsedReport;
-  stateIndex = 0;
   return renderToStaticMarkup(React.createElement(ResultsPage, {
     report: parsedReport ? JSON.stringify(parsedReport) : '',
     profile, breakdown: calcCRS(profile), calcCRS,
   }));
 }
 
-test('results render before a report arrives without undefined cost values', () => {
+test('results show only the pending state before a report arrives', () => {
   const html = render(undefined);
-  assert.match(html, /Estimated costs/);
-  assert.match(html, /Your profile summary will appear here/);
+  assert.match(html, /Finding your pathways/);
+  assert.doesNotMatch(html, /Estimated costs|Your CRS score/);
   assert.doesNotMatch(html, /NaN|undefined/);
 });
 
 test('loaded report renders item amounts and proportional cost bars', () => {
-  const html = render(report({ total: '$3,000', items: [{ name: 'Example main cost', amount: 2000 }, { name: 'Example smaller cost', amount: 1000 }] }));
-  assert.match(html, /Rendering regression fixture/);
+  const html = renderToStaticMarkup(React.createElement(ReportBudget, { report: report({ total: '$3,000', items: [{ name: 'Example main cost', amount: 2000 }, { name: 'Example smaller cost', amount: 1000 }] }) }));
   assert.match(html, /\$3,000/);
   assert.match(html, /Example main cost/);
   assert.match(html, /width:100%/);
@@ -75,7 +63,34 @@ test('loaded report renders item amounts and proportional cost bars', () => {
 });
 
 test('loaded report preserves a nonnumeric estimate when no fee amounts are verified', () => {
-  const html = render(report({ total: 'Verify current official fees', items: [] }));
+  const html = renderToStaticMarkup(React.createElement(ReportBudget, { report: report({ total: 'Verify current official fees', items: [] }) }));
   assert.match(html, /Verify current official fees/);
   assert.doesNotMatch(html, /NaN|undefined/);
+});
+
+test('loaded results open on the profile without rendering other chapters', () => {
+  const html = render(report({ total: '$3,000', items: [{ name: 'Example cost', amount: 3000 }] }));
+  assert.match(html, /Rendering regression fixture/);
+  assert.match(html, /Report chapters/);
+  assert.doesNotMatch(html, /Example cost|What changes for you|Your stated settlement funds|NaN|undefined/);
+});
+
+test('zero cost amounts do not produce invalid bar widths', () => {
+  const html = renderToStaticMarkup(React.createElement(ReportBudget, { report: report({ total: '$0', items: [{ name: 'No fee', amount: 0 }] }) }));
+  assert.match(html, /width:0%/);
+  assert.doesNotMatch(html, /NaN|Infinity|undefined/);
+});
+
+test('assessment renders a single active question with section navigation', () => {
+  const html = renderToStaticMarkup(React.createElement(AssessmentFlow));
+  assert.match(html, /Assessment sections/);
+  assert.match(html, /name="age"/);
+  assert.doesNotMatch(html, /name="dependentChildren"|name="maritalStatus"|name="citizenship"/);
+});
+
+test('preparation begins with only the destination question and a usable next action', () => {
+  const html = renderToStaticMarkup(React.createElement(PreparationFlow, { assessmentProfile: { provincialNomination: 'Yes', nominationType: 'Express Entry' } }));
+  assert.match(html, /preparation-route-destination/);
+  assert.doesNotMatch(html, /name="route.adult"|name="route.process"|name="identity.fullName"/);
+  assert.match(html, /<button type="submit" class="pathway-button pathway-button--primary">Continue/);
 });

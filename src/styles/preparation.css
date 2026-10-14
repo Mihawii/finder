@@ -1,6 +1,17 @@
 .preparation-flow .assessment-stepper ol { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .preparation-flow .assessment-choice { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .preparation-scope { padding: 0 0 24px; font-size: 12px; }
+.preparation-scope summary { cursor: pointer; color: #d1d6c7; font-size: 11px; }
+.preparation-scope summary span { color: var(--assessment-muted); }
+.preparation-scope[open] summary { margin-bottom: 12px; }
+.preparation-focus-card { min-height: 240px; }
+.preparation-record-nav { display: flex; flex-wrap: wrap; gap: 6px; }
+.preparation-record-nav .pathway-button { border: 1px solid transparent; font-size: 11px; padding: 8px 13px; }
+.preparation-record-nav .pathway-button[aria-current] { border-color: #ffffff2b; color: #eeede8; background: #ffffff08; }
+.preparation-history .preparation-history-section { border: 1px solid #ffffff08; border-radius: 20px; background: #1a1c19; padding: 26px; }
+.preparation-history-section h2 { font: 400 26px 'Instrument Serif', Georgia, serif; }
+.preparation-coverage-card h2 { font: 400 26px 'Instrument Serif', Georgia, serif; margin-bottom: 18px; }
+.preparation-coverage-card .preparation-coverage { font-size: 12px; }
 .preparation-scope strong { display: block; font-size: 13px; font-weight: 500; margin-bottom: 7px; }
 .preparation-scope p { color: var(--assessment-muted); margin-top: 5px !important; line-height: 1.6; }
 .preparation-copy { font-size: 12px; color: var(--assessment-muted); line-height: 1.7; }

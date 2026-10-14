@@ -37,6 +37,17 @@
 .assessment-title { padding: 30px 0 27px; }
 .assessment-title h1, .assessment-report-pending h1 { font: 400 clamp(34px, 3vw, 44px)/1.12 'Instrument Serif', Georgia, serif; letter-spacing: -.7px; outline: none; }
 .assessment-title p { margin-top: 9px; color: var(--assessment-muted); font-size: 13px; }
+.assessment-title .assessment-kicker { margin: 0 0 15px !important; font: 10px 'DM Mono', monospace; letter-spacing: .09em; color: #a8b19a; }
+.assessment-focus-card { min-height: 246px; padding: clamp(24px, 3vw, 36px); background: #1a1c19; border: 1px solid #ffffff08; border-radius: 20px; display: flex; flex-direction: column; justify-content: center; }
+.assessment-focus-card > .assessment-field > .assessment-label, .assessment-focus-card > fieldset > legend { font-size: 18px; font-weight: 400; line-height: 1.5; margin-bottom: 22px; color: #eeede8; }
+.assessment-focus-card .assessment-hint { max-width: 450px; margin-top: 15px; }
+.assessment-focus-card .assessment-score-group { border: 0; min-width: 0; }
+.assessment-focus-card .assessment-choice-option { min-height: 56px; }
+.assessment-review-nav { display: flex; flex-wrap: wrap; gap: 6px; }
+.assessment-review-nav .pathway-button { font-size: 11px; min-height: 40px; padding: 8px 14px; border: 1px solid transparent; }
+.assessment-review-nav .pathway-button[aria-current] { border-color: #ffffff2b; background: #ffffff08; color: #eeede8; }
+.assessment-review > .assessment-review-section { background: #1a1c19; border: 1px solid #ffffff08; border-radius: 20px; padding: 26px; }
+.assessment-report-pending { padding: 42px !important; background: #1a1c19; border: 1px solid #ffffff08; border-radius: 22px; margin-top: 54px; }
 .assessment-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 20px; row-gap: 22px; }
 .assessment-field { min-width: 0; }
 .assessment-field--wide { grid-column: 1 / -1; }
@@ -113,6 +124,10 @@
   .assessment-stepper ol { gap: 5px; }
 }
 @media (max-width: 760px) {
+  .assessment-focus-card { min-height: 220px; padding: 24px; border-radius: 18px; }
+  .assessment-focus-card > .assessment-field > .assessment-label, .assessment-focus-card > fieldset > legend { font-size: 17px; }
+  .assessment-report-pending { margin-top: 0; padding: 26px !important; }
+  .assessment-review > .assessment-review-section { padding: 22px; }
   .assessment-header { height: 66px; padding: 0 20px; }
   .assessment-wordmark { font-size: 17px; }
   .assessment-wordmark .country-brand { font-size: 16px; gap: 5px; }

@@ -137,12 +137,16 @@ function Field({ field, profile, update, errors }) {
   </div>;
 }
 
-function Review({ sections, profile, onEdit }) {
+function Review({ sections, profile, onEdit, active, onSelect }) {
   const value = field => field.key === "settlementFunds" ? `${Number(profile[field.key]).toLocaleString()} CAD` : profile[field.key] || "Open to any";
-  return <div className="assessment-review">{sections.map((fields, index) => <section className="assessment-review-section" key={STEPS[index].id}>
-    <header><h2>{STEPS[index].label}</h2><Button variant="secondary" onClick={() => onEdit(index)} aria-label={`Edit ${STEPS[index].label}`}>Edit <ArrowRight size={13} aria-hidden="true" /></Button></header>
-    <dl>{fields.map(field => <div key={field.key}><dt>{field.label}</dt><dd>{field.fields ? field.fields.map(child => `${child.label}: ${profile[child.key]}`).join(" · ") : value(field)}</dd></div>)}</dl>
-  </section>)}</div>;
+  return <div className="assessment-review">
+    <nav className="assessment-review-nav" aria-label="Review a profile section">{sections.map((_, index) => <Button key={STEPS[index].id} variant="secondary" aria-current={active === index ? "true" : undefined} onClick={() => onSelect(index)}>{STEPS[index].label}</Button>)}</nav>
+    <section className="assessment-review-section" key={STEPS[active].id}>
+      <header><h2>{STEPS[active].label}</h2><Button variant="secondary" onClick={() => onEdit(active)} aria-label={`Edit ${STEPS[active].label}`}>Edit <ArrowRight size={13} aria-hidden="true" /></Button></header>
+      <dl>{sections[active].map(field => <div key={field.key}><dt>{field.label}</dt><dd>{field.fields ? field.fields.map(child => `${child.label}: ${profile[child.key]}`).join(" · ") : value(field)}</dd></div>)}</dl>
+    </section>
+    <p className="assessment-hint">Choose a section above to check or edit your answers.</p>
+  </div>;
 }
 
 export function AssessmentShell({ children, onBack, backLabel = "Exit assessment" }) {
@@ -177,6 +181,8 @@ export function AssessmentReportError({ onBack }) {
 export default function AssessmentFlow({ onComplete, onBack, initialProfile }) {
   const [profile, setProfile] = useState(() => ({ ...INITIAL_PROFILE, ...initialProfile }));
   const [step, setStep] = useState(initialProfile ? 6 : 0);
+  const [fieldIndex, setFieldIndex] = useState(0);
+  const [reviewSection, setReviewSection] = useState(0);
   const [errors, setErrors] = useState({});
   const [direction, setDirection] = useState(1);
   const [editing, setEditing] = useState(false);
@@ -190,6 +196,7 @@ export default function AssessmentFlow({ onComplete, onBack, initialProfile }) {
   const firstIncomplete = completed.findIndex(done => !done);
   const available = firstIncomplete === -1 ? 6 : firstIncomplete;
   const current = STEPS[step];
+  const activeField = sections[step]?.[fieldIndex];
 
   useEffect(() => {
     if (focusNext.current) {
@@ -197,7 +204,7 @@ export default function AssessmentFlow({ onComplete, onBack, initialProfile }) {
       sectionTop.current?.scrollIntoView({ block: "start", behavior: "instant" });
       focusNext.current = false;
     }
-  }, [step]);
+  }, [step, fieldIndex]);
 
   const update = (key, value) => {
     setProfile(prev => {
@@ -209,12 +216,19 @@ export default function AssessmentFlow({ onComplete, onBack, initialProfile }) {
     });
     setErrors(prev => ({ ...prev, [key]: "" }));
   };
-  const goTo = index => {
+  const goTo = (index, question = 0) => {
     if (index === step) return;
     setDirection(index > step ? 1 : -1);
     setErrors({});
     focusNext.current = true;
+    setFieldIndex(question);
     setStep(index);
+  };
+  const goToField = index => {
+    setDirection(index > fieldIndex ? 1 : -1);
+    setErrors({});
+    focusNext.current = true;
+    setFieldIndex(index);
   };
   const focusError = nextErrors => {
     requestAnimationFrame(() => document.getElementById(`assessment-${Object.keys(nextErrors)[0]}`)?.focus());
@@ -226,6 +240,7 @@ export default function AssessmentFlow({ onComplete, onBack, initialProfile }) {
       if (firstIncomplete !== -1) {
         const nextErrors = sectionErrors(sections[firstIncomplete], profile);
         goTo(firstIncomplete);
+        setFieldIndex(sections[firstIncomplete].findIndex(field => (field.fields || [field]).some(child => nextErrors[child.key])));
         setErrors(nextErrors);
         focusError(nextErrors);
         return;
@@ -234,9 +249,10 @@ export default function AssessmentFlow({ onComplete, onBack, initialProfile }) {
       if (onComplete?.(profile) === false) setSubmitted(false);
       return;
     }
-    const nextErrors = sectionErrors(sections[step], profile);
+    const nextErrors = sectionErrors([activeField], profile);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length) { focusError(nextErrors); return; }
+    if (fieldIndex < sections[step].length - 1) { goToField(fieldIndex + 1); return; }
     if (editing) {
       if (firstIncomplete === -1) { setEditing(false); goTo(6); }
       else { goTo(firstIncomplete); }
@@ -248,15 +264,15 @@ export default function AssessmentFlow({ onComplete, onBack, initialProfile }) {
       <AssessmentStepper steps={STEPS} active={step} completed={completed} available={available} onSelect={index => { setEditing(false); goTo(index); }} />
     </div>
     <form className="assessment-form" noValidate onSubmit={handleSubmit}>
-      <motion.div key={current.id} initial={reducedMotion ? false : { opacity: 0, x: direction * 12 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2, ease: "easeOut" }}>
-        <div className="assessment-title"><h1 ref={heading} tabIndex={-1}>{current.title}</h1>{current.description && <p>{current.description}</p>}</div>
-        {step === 6 ? <Review sections={sections} profile={profile} onEdit={index => { setEditing(true); goTo(index); }} />
-          : <div className="assessment-fields">{sections[step].map(field => <Field key={field.key} field={field} profile={profile} update={update} errors={errors} />)}</div>}
+      <motion.div key={activeField ? `${current.id}-${activeField.key}` : current.id} initial={reducedMotion ? false : { opacity: 0, x: direction * 12 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2, ease: "easeOut" }}>
+        <div className="assessment-title"><p className="assessment-kicker">{step === 6 ? "ONE LAST LOOK" : `${current.label.toUpperCase()} · ${String(fieldIndex + 1).padStart(2, "0")} / ${String(sections[step].length).padStart(2, "0")}`}</p><h1 ref={heading} tabIndex={-1}>{current.title}</h1>{current.description && <p>{current.description}</p>}</div>
+        {step === 6 ? <Review sections={sections} profile={profile} active={reviewSection} onSelect={setReviewSection} onEdit={index => { setEditing(true); goTo(index); }} />
+          : <div className="assessment-focus-card"><Field key={activeField.key} field={activeField} profile={profile} update={update} errors={errors} /></div>}
       </motion.div>
       {Object.values(errors).some(Boolean) && <p className="assessment-validation" role="alert">Check the highlighted answers to continue.</p>}
       <footer className="assessment-actions">
-        <Button variant="secondary" onClick={() => step === 0 ? onBack?.() : goTo(step - 1)}><ArrowLeft size={15} aria-hidden="true" /> Back</Button>
-        <Button type="submit" disabled={submitted}>{step === 6 ? "Create my report" : editing ? "Save changes" : "Continue"}<ArrowRight size={15} aria-hidden="true" /></Button>
+        <Button variant="secondary" onClick={() => fieldIndex > 0 && step < 6 ? goToField(fieldIndex - 1) : step === 0 ? onBack?.() : goTo(step - 1, sections[step - 1].length - 1)}><ArrowLeft size={15} aria-hidden="true" /> Back</Button>
+        <Button type="submit" disabled={submitted}>{step === 6 ? "Create my report" : editing && fieldIndex === sections[step].length - 1 ? "Save changes" : "Continue"}<ArrowRight size={15} aria-hidden="true" /></Button>
       </footer>
     </form>
     <p className="assessment-footnote">Independent guidance. Not affiliated with IRCC. <span>For information, not legal advice.</span></p>

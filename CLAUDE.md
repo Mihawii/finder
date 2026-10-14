@@ -30,6 +30,7 @@ React 18 + Vite, shared pure JavaScript modules, Firebase Cloud Functions (Node 
 | File | Responsibility |
 |------|----------------|
 | `pathwayfinder-app (2).jsx` | Routing, assessment/results lifecycle, report rendering and service entry |
+| `src/report-view.jsx`, `src/styles/report.css` | One active report chapter, related bento cards, scenarios and report export controls |
 | `src/assessment_flow.jsx`, `src/assessment-data.js` | Grouped questionnaire, conditional fields, review and form state |
 | `functions/lib/assessment/crs.js` | Shared language conversion and CRS calculation |
 | `functions/lib/assessment/profile.js` | Form-to-profile mapping; unknowns and nomination types |
